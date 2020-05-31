@@ -35,6 +35,8 @@ macro_rules! config {
 #[macro_use]
 mod config;
 
+mod radio;
+
 // Import the right HAL/PAC crate, depending on the target chip
 #[cfg(feature = "51")]
 use nrf51_hal as hal;
@@ -203,7 +205,7 @@ const APP: () = {
     }
 
     #[task(binds = RADIO, resources = [esb_irq], priority = 3)]
-    fn radio(ctx: radio::Context) {
+    fn radio_interrupt(ctx: radio_interrupt::Context) {
         match ctx.resources.esb_irq.radio_interrupt() {
             Err(Error::MaximumAttempts) => {
                 ATTEMPTS_FLAG.store(true, Ordering::Release);

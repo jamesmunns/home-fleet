@@ -18,6 +18,15 @@ nrf52832-hal = { version = "0.10", features = ["rt"], optional = true }
 nrf52840-hal = { version = "0.10", features = ["rt"], optional = true }
 nrf51-hal = {version = "0.10.0", features = ["rt"], optional = true}
 
+[dependencies.serde]
+version = "1.0"
+default-features = false
+
+[dependencies.chacha20poly1305]
+version = "0.4.1"
+default-features = false
+features = ["reduced-round", "heapless"]
+
 [dependencies.esb]
 version = "0.0.1"
 features = ["fast-ru"]

@@ -9,7 +9,7 @@ config! {
     baudrate = BAUD230400;
 
     // UART TX and RX pins.
-    // Must be field names of the `nrf52810_hal::gpio::p0::Parts` struct.
+    // NOTE: These pins are for the dwm1001
     tx_pin = p0_05;
     rx_pin = p0_11;
 }
