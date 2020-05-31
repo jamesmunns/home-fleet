@@ -1,0 +1,15 @@
+[workspace]
+members = [
+    "plant-light",
+    "pc-modem",
+]
+
+[profile.dev]
+opt-level = "s"
+
+[profile.release]
+opt-level = 3
+debug = true
+lto = true
+codegen-units = 1
+debug-assertions = true
