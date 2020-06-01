@@ -14,6 +14,8 @@ use chacha20poly1305::aead::{Buffer, Error as AeadError};
 
 use core::cmp::min;
 
+use serde::de::DeserializeOwned;
+
 pub mod nonce;
 pub mod prx;
 pub mod ptx;
@@ -40,6 +42,20 @@ pub enum Error {
 struct LilBuf<'a> {
     buf: &'a mut [u8],
     used: u8,
+}
+
+#[derive(Debug)]
+pub struct RxMessage<T>
+where
+    T: DeserializeOwned,
+{
+    msg: T,
+    meta: MessageMetadata
+}
+
+#[derive(Debug)]
+pub struct MessageMetadata {
+    pipe: u8,
 }
 
 impl<'a> AsRef<[u8]> for LilBuf<'a> {

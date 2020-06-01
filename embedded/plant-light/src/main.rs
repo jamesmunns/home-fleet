@@ -164,7 +164,7 @@ const APP: () = {
         let msg = DeviceToHost::General(GeneralDeviceMessage::InitializeSession);
 
         loop {
-            match esb_app.send(&msg) {
+            match esb_app.send(&msg, 0) {
                 Ok(_) => rprintln!("Sent {:?}", msg),
                 Err(e) => rprintln!("Send err: {:?}", e),
             };

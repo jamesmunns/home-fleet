@@ -8,7 +8,7 @@ use chacha20poly1305::ChaCha8Poly1305; // Or `XChaCha20Poly1305`
 
 use postcard::{from_bytes, to_slice};
 
-use crate::{nonce::FleetNonce, Error, LilBuf, MIN_CRYPT_SIZE, NONCE_SIZE};
+use crate::{nonce::FleetNonce, Error, LilBuf, MIN_CRYPT_SIZE, NONCE_SIZE, RxMessage, MessageMetadata};
 
 pub struct FleetRadioPrx<OutgoingLen, IncomingLen, OutgoingTy, IncomingTy>
 where
@@ -51,11 +51,11 @@ where
         }
     }
 
-    pub fn send(&mut self, msg: &OutgoingTy) -> Result<(), Error> {
+    pub fn send(&mut self, msg: &OutgoingTy, pipe: u8) -> Result<(), Error> {
         let header = EsbHeader::build()
             .max_payload(self.app.maximum_payload_size() as u8)
             .pid(0) // todo
-            .pipe(0) // todo
+            .pipe(pipe)
             .no_ack(false)
             .check()
             .map_err(|_| Error::HeaderError)?;
@@ -100,7 +100,7 @@ where
         Ok(())
     }
 
-    pub fn receive(&mut self) -> Result<Option<IncomingTy>, Error> {
+    pub fn receive(&mut self) -> Result<Option<RxMessage<IncomingTy>>, Error> {
         let mut packet = match self.app.read_packet() {
             // No packet ready
             None => return Ok(None),
@@ -146,9 +146,17 @@ where
             }
         }
 
-        let result = match from_bytes::<IncomingTy>(buf.as_ref()) {
-            Ok(deser) => Ok(Some(deser)),
-            Err(_e) => Err(Error::Deser),
+        let result = match from_bytes(buf.as_ref()) {
+            Ok(pkt) => {
+                let resp = RxMessage {
+                    msg: pkt,
+                    meta: MessageMetadata {
+                        pipe: packet.pipe()
+                    }
+                };
+                Ok(Some(resp))
+            },
+            Err(_) => Err(Error::Deser),
         };
 
         packet.release();

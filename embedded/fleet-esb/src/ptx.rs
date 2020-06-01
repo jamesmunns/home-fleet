@@ -10,7 +10,7 @@ use crate::hal::Rng;
 
 use postcard::{from_bytes, to_slice};
 
-use crate::{nonce::FleetNonce, Error, LilBuf, RollingTimer, MIN_CRYPT_SIZE, NONCE_SIZE};
+use crate::{nonce::FleetNonce, Error, LilBuf, RollingTimer, MIN_CRYPT_SIZE, NONCE_SIZE, RxMessage, MessageMetadata};
 
 pub struct FleetRadioPtx<OutgoingLen, IncomingLen, OutgoingTy, IncomingTy, Tick>
 where
@@ -74,11 +74,11 @@ where
         }
     }
 
-    pub fn send(&mut self, msg: &OutgoingTy) -> Result<(), Error> {
+    pub fn send(&mut self, msg: &OutgoingTy, pipe: u8) -> Result<(), Error> {
         let header = EsbHeader::build()
-            .max_payload(self.app.maximum_payload_size() as u8) // toto
+            .max_payload(self.app.maximum_payload_size() as u8)
             .pid(0) // todo
-            .pipe(0) // todo
+            .pipe(pipe)
             .no_ack(false)
             .check()
             .map_err(|_| Error::HeaderError)?;
@@ -134,7 +134,7 @@ where
         self.tick.get_current_tick().wrapping_add(self.tick_offset)
     }
 
-    pub fn receive(&mut self) -> Result<Option<IncomingTy>, Error> {
+    pub fn receive(&mut self) -> Result<Option<RxMessage<IncomingTy>>, Error> {
         let mut packet = loop {
             match self.app.read_packet() {
                 // No packet ready
@@ -143,9 +143,7 @@ where
                 // Empty ACK, release and get the next packet
                 Some(pkt) if pkt.payload_len() == 0 => {
                     pkt.release();
-                    // For now, let's just see what we're getting
-                    return Err(Error::TempEmptyAck);
-                    // continue;
+                    continue;
                 }
 
                 // We didn't even get enough bytes for the crypto
@@ -197,7 +195,15 @@ where
         }
 
         let result = match from_bytes(buf.as_ref()) {
-            Ok(pkt) => Ok(Some(pkt)),
+            Ok(pkt) => {
+                let resp = RxMessage {
+                    msg: pkt,
+                    meta: MessageMetadata {
+                        pipe: packet.pipe()
+                    }
+                };
+                Ok(Some(resp))
+            },
             Err(_) => Err(Error::Deser),
         };
         packet.release();
