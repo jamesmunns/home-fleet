@@ -1,6 +1,6 @@
 [probe]
 # The index of the probe in the connected probe list.
-probe_index = 1
+probe_index = 0
 # The protocol to be used for communicating with the target.
 protocol = "Swd"
 # The speed in kHz of the data link to the target.

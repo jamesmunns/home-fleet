@@ -6,7 +6,7 @@
 config! {
     // The baudrate to configure the UART with.
     // Any variant of `nrf52810_hal::uarte::Baudrate` is accepted.
-    baudrate = BAUD1M;
+    baudrate = BAUD230400;
 
     // UART TX and RX pins.
     // Must be field names of the `nrf52810_hal::gpio::p0::Parts` struct.

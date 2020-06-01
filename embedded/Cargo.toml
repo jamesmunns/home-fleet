@@ -2,10 +2,12 @@
 members = [
     "plant-light",
     "pc-modem",
+    "fleet-esb",
 ]
 
 [profile.dev]
-opt-level = "s"
+opt-level = 1
+debug = true
 
 [profile.release]
 opt-level = 3

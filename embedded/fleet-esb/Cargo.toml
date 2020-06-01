@@ -1,45 +1,32 @@
 [package]
-name = "pc-modem"
-version = "0.0.1"
+name = "fleet-esb"
+version = "0.1.0"
+authors = ["James Munns <james.munns@ferrous-systems.com>"]
 edition = "2018"
-authors = [ "James Munns <james.munns@ferrous-systems.com>"]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-cortex-m = "0.6.2"
-cortex-m-rtfm = "0.5.1"
-cortex-m-rt = "0.6.12"
-bbqueue = "0.4.6"
-embedded-hal = "0.2.3"
-rtt-target = {version = "0.2.0", features = ["cortex-m"] }
-
 nrf52810-hal = { version = "0.10", features = ["rt"], optional = true }
 nrf52832-hal = { version = "0.10", features = ["rt"], optional = true }
 nrf52840-hal = { version = "0.10", features = ["rt"], optional = true }
 nrf51-hal = {version = "0.10.0", features = ["rt"], optional = true}
+postcard = "0.5.0"
+
+[dependencies.serde]
+version = "1.0"
+default-features = false
+
+[dependencies.chacha20poly1305]
+version = "0.4.1"
+default-features = false
+features = ["reduced-round", "heapless"]
 
 [dependencies.esb]
 version = "0.0.1"
 features = ["fast-ru"]
 git = "https://github.com/jamesmunns/esb"
 rev = "mut-read"
-
-[dependencies.fleet-icd]
-version = "0.1.0"
-path = "../../shared/fleet-icd"
-
-[dependencies.fleet-esb]
-version = "0.1.0"
-path = "../fleet-esb"
-
-[dependencies.panic-persist]
-version = "0.2.1"
-default-features = false
-
-# Disable documentation to avoid spurious rustdoc warnings
-[[bin]]
-name = "pc-modem"
-doc = false
-test = false
 
 [features]
 51 = ["esb/51", "nrf51-hal"]

@@ -17,22 +17,20 @@ nrf52810-hal = { version = "0.10", features = ["rt"], optional = true }
 nrf52832-hal = { version = "0.10", features = ["rt"], optional = true }
 nrf52840-hal = { version = "0.10", features = ["rt"], optional = true }
 nrf51-hal = {version = "0.10.0", features = ["rt"], optional = true}
-postcard = "0.5.0"
-
-[dependencies.serde]
-version = "1.0"
-default-features = false
-
-[dependencies.chacha20poly1305]
-version = "0.4.1"
-default-features = false
-features = ["reduced-round", "heapless"]
 
 [dependencies.esb]
 version = "0.0.1"
 features = ["fast-ru"]
 git = "https://github.com/jamesmunns/esb"
 rev = "mut-read"
+
+[dependencies.fleet-icd]
+version = "0.1.0"
+path = "../../shared/fleet-icd"
+
+[dependencies.fleet-esb]
+version = "0.1.0"
+path = "../fleet-esb"
 
 [dependencies.panic-persist]
 version = "0.2.1"

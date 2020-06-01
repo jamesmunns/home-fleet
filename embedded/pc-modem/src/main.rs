@@ -49,15 +49,13 @@ use {
     core::{
         default::Default,
         fmt::Write,
-        panic::PanicInfo,
-        sync::atomic::{compiler_fence, AtomicBool, Ordering},
+        sync::atomic::AtomicBool,
     },
-    embedded_hal::serial::Write as HalWirte,
     esb::{
         consts::*, Addresses, BBBuffer, Config, ConstBBBuffer, Error, EsbApp, EsbBuffer, EsbHeader,
         EsbIrq, IrqTimer, irq::StatePRX
     },
-    hal::{gpio::Level, pac::TIMER0},
+    hal::{gpio::Level, pac::{TIMER0, TIMER1}, Timer},
     rtt_target::{rprintln, rtt_init_print},
     cortex_m::asm::bkpt,
 };
@@ -65,8 +63,16 @@ use {
 #[cfg(not(feature = "51"))]
 use hal::{
     pac::UARTE0,
-    uarte::{self, Baudrate, Parity, Uarte},
+    uarte::{Baudrate, Parity, Uarte},
 };
+
+use fleet_esb::prx::FleetRadioPrx;
+
+use fleet_icd::radio::{
+    DeviceToHost, HostToDevice, GeneralHostMessage,
+};
+
+use embedded_hal::blocking::delay::DelayMs;
 
 const MAX_PAYLOAD_SIZE: u8 = 64;
 const RESP: &'static str = "Hello back";
@@ -74,10 +80,11 @@ const RESP: &'static str = "Hello back";
 #[rtfm::app(device = crate::hal::pac, peripherals = true)]
 const APP: () = {
     struct Resources {
-        esb_app: EsbApp<U8192, U8192>,
+        esb_app: FleetRadioPrx<U8192, U8192, HostToDevice, DeviceToHost>,
         esb_irq: EsbIrq<U8192, U8192, TIMER0, StatePRX>,
         esb_timer: IrqTimer<TIMER0>,
         serial: Uarte<UARTE0>,
+        timer: Timer<TIMER1>,
     }
 
     #[init]
@@ -118,47 +125,60 @@ const APP: () = {
             bkpt();
         }
 
+        let esb_app = FleetRadioPrx::new(
+            esb_app,
+            &[
+                0x00, 0x01, 0x02, 0x03,
+                0x10, 0x11, 0x12, 0x13,
+                0x20, 0x21, 0x22, 0x23,
+                0x30, 0x31, 0x32, 0x33,
+                0x40, 0x41, 0x42, 0x43,
+                0x50, 0x51, 0x52, 0x53,
+                0x60, 0x61, 0x62, 0x63,
+                0x70, 0x71, 0x72, 0x73,
+            ]
+        );
+
         init::LateResources {
             esb_app,
             esb_irq,
             esb_timer,
             serial,
+            timer: Timer::new(ctx.device.TIMER1),
         }
     }
 
-    #[idle(resources = [serial, esb_app])]
+    #[idle(resources = [serial, esb_app, timer])]
     fn idle(ctx: idle::Context) -> ! {
-        let esb_header = EsbHeader::build()
-            .max_payload(MAX_PAYLOAD_SIZE)
-            .pid(0)
-            .pipe(0)
-            .no_ack(false)
-            .check()
-            .unwrap();
+        let esb_app = ctx.resources.esb_app;
+        let timer = ctx.resources.timer;
+
+        let resp = HostToDevice::General(GeneralHostMessage::Ping);
+
+        let mut ctr = 0;
+
         loop {
-            // Did we receive any packet ?
-            if let Some(packet) = ctx.resources.esb_app.read_packet() {
-                let payload = core::str::from_utf8(&packet[..]).unwrap();
-                //hprintln!("{}", payload).unwrap();
+            match esb_app.receive() {
+                Ok(None) => {
+                    ctr += 1;
 
-                //ctx.resources.serial.write_str("Payload: ").unwrap();
-                //let payload = core::str::from_utf8(&packet[..]).unwrap();
-                //ctx.resources.serial.write_str(payload).unwrap();
-                //ctx.resources.serial.write_str(" rssi: ").unwrap();
-                //ctx.resources
-                //    .serial
-                //    .write(packet.get_header().rssi())
-                //    .unwrap();
-                //ctx.resources.serial.write(b'\n').unwrap();
-                packet.release();
+                    if ctr == 20 {
+                        rprintln!("zzz");
+                        ctr = 0;
+                    }
 
-                // Respond in the next transfer
-
-                // writeln!(ctx.resources.serial, "--- Sending Hello ---\r\n").unwrap();
-                let mut response = ctx.resources.esb_app.grant_packet(esb_header).unwrap();
-                let length = RESP.as_bytes().len();
-                &response[..length].copy_from_slice(RESP.as_bytes());
-                response.commit(length);
+                    timer.delay_ms(50u8)
+                },
+                Ok(Some(m)) => {
+                    rprintln!("Got {:?}", m);
+                    match esb_app.send(&resp) {
+                        Ok(_) => rprintln!("Sent {:?}", resp),
+                        Err(e) => rprintln!("TxErr: {:?}", e),
+                    }
+                }
+                Err(e) => {
+                    rprintln!("RxErr: {:?}", e);
+                }
             }
         }
     }

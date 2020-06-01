@@ -35,8 +35,6 @@ macro_rules! config {
 #[macro_use]
 mod config;
 
-mod radio;
-
 // Import the right HAL/PAC crate, depending on the target chip
 #[cfg(feature = "51")]
 use nrf51_hal as hal;
@@ -51,36 +49,57 @@ use {
     core::{
         default::Default,
         fmt::Write,
-        panic::PanicInfo,
-        sync::atomic::{compiler_fence, AtomicBool, Ordering},
+        sync::atomic::{AtomicBool, Ordering, AtomicU32},
     },
+    cortex_m::asm::bkpt,
     esb::{
-        consts::*, Addresses, BBBuffer, ConfigBuilder, ConstBBBuffer, Error, EsbApp, EsbBuffer,
-        EsbHeader, EsbIrq, IrqTimer, irq::StatePTX,
+        consts::*, irq::StatePTX, Addresses, BBBuffer, ConfigBuilder, ConstBBBuffer, Error,
+        EsbBuffer, EsbIrq, IrqTimer,
     },
     hal::{
         gpio::Level,
         pac::{TIMER0, TIMER1, UARTE0},
         uarte::{Baudrate, Parity, Uarte},
+        Rng, Timer,
     },
-    rtt_target::{rprintln, rtt_init_print},
-    cortex_m::asm::bkpt,
+    rtt_target::{rtt_init_print, rprintln},
 };
 
-const MAX_PAYLOAD_SIZE: u8 = 64;
-const MSG: &'static str = "Hello from PTX";
+use fleet_esb::{
+    ptx::FleetRadioPtx,
+    RollingTimer,
+};
 
-static DELAY_FLAG: AtomicBool = AtomicBool::new(false);
+use fleet_icd::radio::{
+    DeviceToHost,
+    HostToDevice,
+    GeneralDeviceMessage,
+};
+
+use embedded_hal::blocking::delay::DelayMs;
+
+static FAKE_TIME: AtomicU32 = AtomicU32::new(0);
+
+pub struct FakeClock {
+    clock: &'static AtomicU32,
+}
+
+impl RollingTimer for FakeClock {
+    fn get_current_tick(&self) -> u32 {
+        self.clock.fetch_add(1, Ordering::SeqCst)
+    }
+}
+
 static ATTEMPTS_FLAG: AtomicBool = AtomicBool::new(false);
 
 #[rtfm::app(device = crate::hal::pac, peripherals = true)]
 const APP: () = {
     struct Resources {
-        esb_app: EsbApp<U8192, U8192>,
+        esb_app: FleetRadioPtx<U8192, U8192, DeviceToHost, HostToDevice, FakeClock>,
         esb_irq: EsbIrq<U8192, U8192, TIMER0, StatePTX>,
         esb_timer: IrqTimer<TIMER0>,
         serial: Uarte<UARTE0>,
-        delay: TIMER1,
+        timer: Timer<TIMER1>,
     }
 
     #[init]
@@ -104,30 +123,10 @@ const APP: () = {
             .check()
             .unwrap();
         let (esb_app, esb_irq, esb_timer) = BUFFER
-            .try_split(
-                ctx.device.TIMER0,
-                ctx.device.RADIO,
-                addresses,
-                config,
-            )
+            .try_split(ctx.device.TIMER0, ctx.device.RADIO, addresses, config)
             .unwrap();
 
         let esb_irq = esb_irq.into_ptx();
-
-        // setup timer for delay
-        let timer = ctx.device.TIMER1;
-        timer.bitmode.write(|w| w.bitmode()._32bit());
-
-        // 16 Mhz / 2**9 = 31250 Hz
-        timer.prescaler.write(|w| unsafe { w.prescaler().bits(9) });
-        timer.shorts.modify(|_, w| w.compare0_clear().enabled());
-        timer.cc[0].write(|w| unsafe { w.bits(12u32) });
-        timer.events_compare[0].reset();
-        timer.intenset.write(|w| w.compare0().set());
-
-        // Clears and starts the counter
-        timer.tasks_clear.write(|w| unsafe { w.bits(1) });
-        timer.tasks_start.write(|w| unsafe { w.bits(1) });
 
         rtt_init_print!();
 
@@ -139,68 +138,61 @@ const APP: () = {
             bkpt();
         }
 
-        init::LateResources {
+        let mut rng = Rng::new(ctx.device.RNG);
+
+        let radio = FleetRadioPtx::new(
             esb_app,
+            &[
+                0x00, 0x01, 0x02, 0x03,
+                0x10, 0x11, 0x12, 0x13,
+                0x20, 0x21, 0x22, 0x23,
+                0x30, 0x31, 0x32, 0x33,
+                0x40, 0x41, 0x42, 0x43,
+                0x50, 0x51, 0x52, 0x53,
+                0x60, 0x61, 0x62, 0x63,
+                0x70, 0x71, 0x72, 0x73,
+            ],
+            FakeClock { clock: &FAKE_TIME },
+            100,
+            &mut rng,
+        );
+
+        init::LateResources {
+            esb_app: radio,
             esb_irq,
             esb_timer,
             serial,
-            delay: timer,
+            timer: Timer::new(ctx.device.TIMER1),
         }
     }
 
-    #[idle(resources = [serial, esb_app])]
+    #[idle(resources = [serial, esb_app, timer])]
     fn idle(ctx: idle::Context) -> ! {
-        let mut pid = 0;
-        let mut ct_tx: usize = 0;
-        let mut ct_rx: usize = 0;
-        let mut ct_err: usize = 0;
+        let esb_app = ctx.resources.esb_app;
+        let timer = ctx.resources.timer;
+
+        let msg = DeviceToHost::General(GeneralDeviceMessage::InitializeSession);
 
         loop {
-            let esb_header = EsbHeader::build()
-                .max_payload(MAX_PAYLOAD_SIZE)
-                .pid(pid)
-                .pipe(0)
-                .no_ack(false)
-                .check()
-                .unwrap();
-            if pid == 3 {
-                pid = 0;
-            } else {
-                pid += 1;
-            }
+            match esb_app.send(&msg) {
+                Ok(_) => rprintln!("Sent {:?}", msg),
+                Err(e) => rprintln!("Send err: {:?}", e),
+            };
+            timer.delay_ms(250u8);
 
-            // Did we receive any packet ?
-            if let Some(response) = ctx.resources.esb_app.read_packet() {
-                ct_rx += 1;
-                if (ct_tx % 512) == 0 {
-                    write!(ctx.resources.serial, "Payload: ").unwrap();
-                    ctx.resources.serial.write(&response[..]).unwrap();
-                    let rssi = response.get_header().rssi();
-                    write!(ctx.resources.serial, " | rssi: {}", rssi).unwrap();
-                }
-                response.release();
-            }
-
-
-            if (ct_tx % 512) == 0 {
-                write!(ctx.resources.serial, "\r--- Sending Hello --- | tx: {} rx: {} err: {} |: ", ct_tx, ct_rx, ct_err).unwrap();
-            }
-            ct_tx += 1;
-
-            let mut packet = ctx.resources.esb_app.grant_packet(esb_header).unwrap();
-            let length = MSG.as_bytes().len();
-            &packet[..length].copy_from_slice(MSG.as_bytes());
-            packet.commit(length);
-            ctx.resources.esb_app.start_tx();
-
-            while !DELAY_FLAG.load(Ordering::Acquire) {
-                if ATTEMPTS_FLAG.load(Ordering::Acquire) {
-                    ct_err += 1;
-                    write!(ctx.resources.serial, "--- Ack not received --- | tx: {} rx: {} err: {} |\r\n", ct_tx, ct_rx, ct_err).unwrap();
-                    ATTEMPTS_FLAG.store(false, Ordering::Release);
+            'rx: loop {
+                match esb_app.receive() {
+                    Ok(None) => {
+                        break 'rx;
+                    }
+                    Ok(Some(m)) => {
+                        rprintln!("Got msg: {:?}", m);
+                    }
+                    Err(e) => {
+                        rprintln!("RxErr: {:?}", e);
+                    }
                 }
             }
-            DELAY_FLAG.store(false, Ordering::Release);
         }
     }
 
@@ -211,19 +203,13 @@ const APP: () = {
                 ATTEMPTS_FLAG.store(true, Ordering::Release);
             }
             Err(e) => panic!("Found error {:?}", e),
-            Ok(state) => {} //rprintln!("{:?}", state),
+            Ok(_state) => {} //rprintln!("{:?}", _state),
         }
     }
 
     #[task(binds = TIMER0, resources = [esb_timer], priority = 3)]
     fn timer0(ctx: timer0::Context) {
         ctx.resources.esb_timer.timer_interrupt();
-    }
-
-    #[task(binds = TIMER1, resources = [delay], priority = 1)]
-    fn timer1(ctx: timer1::Context) {
-        ctx.resources.delay.events_compare[0].reset();
-        DELAY_FLAG.store(true, Ordering::Release);
     }
 };
 

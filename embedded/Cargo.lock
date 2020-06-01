@@ -208,15 +208,24 @@ dependencies = [
 ]
 
 [[package]]
-name = "esb"
-version = "0.0.1"
-source = "git+https://github.com/thalesfragoso/esb?rev=separate-types#8c753a738e7f30dad3e432f4c92485df6dab1c86"
+name = "fleet-esb"
+version = "0.1.0"
 dependencies = [
- "bbqueue",
- "nrf51",
- "nrf52810-pac",
- "nrf52832-pac",
- "nrf52840-pac",
+ "chacha20poly1305",
+ "esb",
+ "nrf51-hal",
+ "nrf52810-hal",
+ "nrf52832-hal",
+ "nrf52840-hal",
+ "postcard",
+ "serde",
+]
+
+[[package]]
+name = "fleet-icd"
+version = "0.1.0"
+dependencies = [
+ "serde",
 ]
 
 [[package]]
@@ -429,7 +438,9 @@ dependencies = [
  "cortex-m-rt",
  "cortex-m-rtfm",
  "embedded-hal",
- "esb 0.0.1 (git+https://github.com/thalesfragoso/esb?rev=separate-types)",
+ "esb",
+ "fleet-esb",
+ "fleet-icd",
  "nrf51-hal",
  "nrf52810-hal",
  "nrf52832-hal",
@@ -444,20 +455,19 @@ version = "0.0.1"
 dependencies = [
  "asm-delay",
  "bbqueue",
- "chacha20poly1305",
  "cortex-m 0.6.2",
  "cortex-m-rt",
  "cortex-m-rtfm",
  "embedded-hal",
- "esb 0.0.1 (git+https://github.com/jamesmunns/esb?rev=mut-read)",
+ "esb",
+ "fleet-esb",
+ "fleet-icd",
  "nrf51-hal",
  "nrf52810-hal",
  "nrf52832-hal",
  "nrf52840-hal",
  "panic-persist",
- "postcard",
  "rtt-target",
- "serde",
 ]
 
 [[package]]
