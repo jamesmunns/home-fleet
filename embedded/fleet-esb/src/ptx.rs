@@ -10,7 +10,7 @@ use crate::hal::Rng;
 
 use postcard::{from_bytes, to_slice};
 
-use crate::{nonce::FleetNonce, LilBuf, RollingTimer, MIN_CRYPT_SIZE, NONCE_SIZE, Error};
+use crate::{nonce::FleetNonce, Error, LilBuf, RollingTimer, MIN_CRYPT_SIZE, NONCE_SIZE};
 
 pub struct FleetRadioPtx<OutgoingLen, IncomingLen, OutgoingTy, IncomingTy, Tick>
 where
@@ -83,7 +83,10 @@ where
             .check()
             .map_err(|_| Error::HeaderError)?;
 
-        let mut grant = self.app.grant_packet(header).map_err(|_| Error::QueueFull)?;
+        let mut grant = self
+            .app
+            .grant_packet(header)
+            .map_err(|_| Error::QueueFull)?;
 
         // serialize directly to buffer
         let used = to_slice(msg, &mut grant).map_err(|_| Error::Ser)?.len();

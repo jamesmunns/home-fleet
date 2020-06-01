@@ -46,18 +46,18 @@ use nrf52832_hal as hal;
 use nrf52840_hal as hal;
 
 use {
-    core::{
-        default::Default,
-        fmt::Write,
-        sync::atomic::AtomicBool,
-    },
-    esb::{
-        consts::*, Addresses, BBBuffer, Config, ConstBBBuffer, Error, EsbApp, EsbBuffer, EsbHeader,
-        EsbIrq, IrqTimer, irq::StatePRX
-    },
-    hal::{gpio::Level, pac::{TIMER0, TIMER1}, Timer},
-    rtt_target::{rprintln, rtt_init_print},
+    core::{default::Default, fmt::Write, sync::atomic::AtomicBool},
     cortex_m::asm::bkpt,
+    esb::{
+        consts::*, irq::StatePRX, Addresses, BBBuffer, Config, ConstBBBuffer, Error, EsbBuffer,
+        EsbIrq, IrqTimer,
+    },
+    hal::{
+        gpio::Level,
+        pac::{TIMER0, TIMER1},
+        Timer,
+    },
+    rtt_target::{rprintln, rtt_init_print},
 };
 
 #[cfg(not(feature = "51"))]
@@ -68,14 +68,9 @@ use hal::{
 
 use fleet_esb::prx::FleetRadioPrx;
 
-use fleet_icd::radio::{
-    DeviceToHost, HostToDevice, GeneralHostMessage,
-};
+use fleet_icd::radio::{DeviceToHost, GeneralHostMessage, HostToDevice};
 
 use embedded_hal::blocking::delay::DelayMs;
-
-const MAX_PAYLOAD_SIZE: u8 = 64;
-const RESP: &'static str = "Hello back";
 
 #[rtfm::app(device = crate::hal::pac, peripherals = true)]
 const APP: () = {
@@ -105,12 +100,7 @@ const APP: () = {
         let addresses = Addresses::default();
         let config = Config::default();
         let (esb_app, esb_irq, esb_timer) = BUFFER
-            .try_split(
-                ctx.device.TIMER0,
-                ctx.device.RADIO,
-                addresses,
-                config,
-            )
+            .try_split(ctx.device.TIMER0, ctx.device.RADIO, addresses, config)
             .unwrap();
         let mut esb_irq = esb_irq.into_prx();
         esb_irq.start_receiving().unwrap();
@@ -128,15 +118,10 @@ const APP: () = {
         let esb_app = FleetRadioPrx::new(
             esb_app,
             &[
-                0x00, 0x01, 0x02, 0x03,
-                0x10, 0x11, 0x12, 0x13,
-                0x20, 0x21, 0x22, 0x23,
-                0x30, 0x31, 0x32, 0x33,
-                0x40, 0x41, 0x42, 0x43,
-                0x50, 0x51, 0x52, 0x53,
-                0x60, 0x61, 0x62, 0x63,
+                0x00, 0x01, 0x02, 0x03, 0x10, 0x11, 0x12, 0x13, 0x20, 0x21, 0x22, 0x23, 0x30, 0x31,
+                0x32, 0x33, 0x40, 0x41, 0x42, 0x43, 0x50, 0x51, 0x52, 0x53, 0x60, 0x61, 0x62, 0x63,
                 0x70, 0x71, 0x72, 0x73,
-            ]
+            ],
         );
 
         init::LateResources {
@@ -168,7 +153,7 @@ const APP: () = {
                     }
 
                     timer.delay_ms(50u8)
-                },
+                }
                 Ok(Some(m)) => {
                     ctr = 0;
                     rprintln!("Got {:?}", m);
@@ -191,8 +176,8 @@ const APP: () = {
             Err(e) => {
                 bkpt();
                 panic!("Found error {:?}", e);
-            },
-            Ok(state) => {} //rprintln!("{:?}", state).unwrap(),
+            }
+            Ok(_state) => {} //rprintln!("{:?}", state).unwrap(),
         }
     }
 

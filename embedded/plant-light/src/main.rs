@@ -49,7 +49,7 @@ use {
     core::{
         default::Default,
         fmt::Write,
-        sync::atomic::{AtomicBool, Ordering, AtomicU32},
+        sync::atomic::{AtomicBool, AtomicU32, Ordering},
     },
     cortex_m::asm::bkpt,
     esb::{
@@ -62,19 +62,12 @@ use {
         uarte::{Baudrate, Parity, Uarte},
         Rng, Timer,
     },
-    rtt_target::{rtt_init_print, rprintln},
+    rtt_target::{rprintln, rtt_init_print},
 };
 
-use fleet_esb::{
-    ptx::FleetRadioPtx,
-    RollingTimer,
-};
+use fleet_esb::{ptx::FleetRadioPtx, RollingTimer};
 
-use fleet_icd::radio::{
-    DeviceToHost,
-    HostToDevice,
-    GeneralDeviceMessage,
-};
+use fleet_icd::radio::{DeviceToHost, GeneralDeviceMessage, HostToDevice};
 
 use embedded_hal::blocking::delay::DelayMs;
 
@@ -145,13 +138,8 @@ const APP: () = {
         let radio = FleetRadioPtx::new(
             esb_app,
             &[
-                0x00, 0x01, 0x02, 0x03,
-                0x10, 0x11, 0x12, 0x13,
-                0x20, 0x21, 0x22, 0x23,
-                0x30, 0x31, 0x32, 0x33,
-                0x40, 0x41, 0x42, 0x43,
-                0x50, 0x51, 0x52, 0x53,
-                0x60, 0x61, 0x62, 0x63,
+                0x00, 0x01, 0x02, 0x03, 0x10, 0x11, 0x12, 0x13, 0x20, 0x21, 0x22, 0x23, 0x30, 0x31,
+                0x32, 0x33, 0x40, 0x41, 0x42, 0x43, 0x50, 0x51, 0x52, 0x53, 0x60, 0x61, 0x62, 0x63,
                 0x70, 0x71, 0x72, 0x73,
             ],
             FakeClock { clock: &FAKE_TIME },

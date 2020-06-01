@@ -197,8 +197,9 @@ dependencies = [
 
 [[package]]
 name = "esb"
-version = "0.0.1"
-source = "git+https://github.com/jamesmunns/esb?rev=mut-read#e6c099f7d916189e392ffe33f269c7a685a42090"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "292d1ded93dc2b1ed0707614eb16bbfe368346b61f98aa0f691a5c7d03bbddf8"
 dependencies = [
  "bbqueue",
  "nrf51",

@@ -19,10 +19,8 @@ nrf52840-hal = { version = "0.10", features = ["rt"], optional = true }
 nrf51-hal = {version = "0.10.0", features = ["rt"], optional = true}
 
 [dependencies.esb]
-version = "0.0.1"
+version = "0.1.0"
 features = ["fast-ru"]
-git = "https://github.com/jamesmunns/esb"
-rev = "mut-read"
 
 [dependencies.fleet-icd]
 version = "0.1.0"

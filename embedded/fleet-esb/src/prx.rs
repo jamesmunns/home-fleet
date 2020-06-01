@@ -60,7 +60,10 @@ where
             .check()
             .map_err(|_| Error::HeaderError)?;
 
-        let mut grant = self.app.grant_packet(header).map_err(|_| Error::QueueFull)?;
+        let mut grant = self
+            .app
+            .grant_packet(header)
+            .map_err(|_| Error::QueueFull)?;
 
         // serialize directly to buffer
         let used = to_slice(msg, &mut grant).map_err(|_| Error::Ser)?.len();
@@ -85,7 +88,8 @@ where
             .map_err(|_| Error::Encrypt)?;
 
         // Add nonce to payload
-        buf.extend_from_slice(&nonce).map_err(|_| Error::BufferTooSmol)?;
+        buf.extend_from_slice(&nonce)
+            .map_err(|_| Error::BufferTooSmol)?;
 
         // Extract the bytes used of the LilBuf
         let used = buf.used.into();
