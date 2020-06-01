@@ -64,9 +64,9 @@ dependencies = [
 
 [[package]]
 name = "bbqueue"
-version = "0.4.7"
+version = "0.4.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f36bd8479d1b245d038e8703a2ddce1be11f46a911760ebf05f8e149d8562e78"
+checksum = "27d38cf39fda7785da8cf182cff9b2195f8b85b0d2d578a4c5d7f322b2158e82"
 dependencies = [
  "cortex-m 0.6.2",
  "generic-array 0.13.2",
@@ -198,6 +198,18 @@ dependencies = [
 [[package]]
 name = "esb"
 version = "0.0.1"
+source = "git+https://github.com/jamesmunns/esb?rev=mut-read#e6c099f7d916189e392ffe33f269c7a685a42090"
+dependencies = [
+ "bbqueue",
+ "nrf51",
+ "nrf52810-pac",
+ "nrf52832-pac",
+ "nrf52840-pac",
+]
+
+[[package]]
+name = "esb"
+version = "0.0.1"
 source = "git+https://github.com/thalesfragoso/esb?rev=separate-types#8c753a738e7f30dad3e432f4c92485df6dab1c86"
 dependencies = [
  "bbqueue",
@@ -253,6 +265,7 @@ dependencies = [
  "as-slice",
  "generic-array 0.13.2",
  "hash32",
+ "serde",
  "stable_deref_trait",
 ]
 
@@ -411,13 +424,12 @@ dependencies = [
 name = "pc-modem"
 version = "0.0.1"
 dependencies = [
- "asm-delay",
  "bbqueue",
  "cortex-m 0.6.2",
  "cortex-m-rt",
  "cortex-m-rtfm",
  "embedded-hal",
- "esb",
+ "esb 0.0.1 (git+https://github.com/thalesfragoso/esb?rev=separate-types)",
  "nrf51-hal",
  "nrf52810-hal",
  "nrf52832-hal",
@@ -437,12 +449,13 @@ dependencies = [
  "cortex-m-rt",
  "cortex-m-rtfm",
  "embedded-hal",
- "esb",
+ "esb 0.0.1 (git+https://github.com/jamesmunns/esb?rev=mut-read)",
  "nrf51-hal",
  "nrf52810-hal",
  "nrf52832-hal",
  "nrf52840-hal",
  "panic-persist",
+ "postcard",
  "rtt-target",
  "serde",
 ]
@@ -457,10 +470,27 @@ dependencies = [
 ]
 
 [[package]]
-name = "proc-macro2"
-version = "1.0.17"
+name = "postcard"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1502d12e458c49a4c9cbff560d0fe0060c252bc29799ed94ca2ed4bb665a0101"
+checksum = "d2ba083a6a640a9f09d294c0f504acdd7a2b000c179e80c73d4b7a036bfd8164"
+dependencies = [
+ "heapless",
+ "postcard-cobs",
+ "serde",
+]
+
+[[package]]
+name = "postcard-cobs"
+version = "0.1.5-pre"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7c68cb38ed13fd7bc9dd5db8f165b7c8d9c1a315104083a2b10f11354c2af97f"
+
+[[package]]
+name = "proc-macro2"
+version = "1.0.18"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "beae6331a816b1f65d04c45b078fd8e6c93e8071771f41b8163255bbd8d7c8fa"
 dependencies = [
  "unicode-xid",
 ]
@@ -543,6 +573,20 @@ name = "serde"
 version = "1.0.111"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c9124df5b40cbd380080b2cc6ab894c040a3070d995f5c9dc77e18c34a8ae37d"
+dependencies = [
+ "serde_derive",
+]
+
+[[package]]
+name = "serde_derive"
+version = "1.0.111"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3f2c3ac8e6ca1e9c80b8be1023940162bf81ae3cffbb1809474152f2ce1eb250"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
 
 [[package]]
 name = "stable_deref_trait"
@@ -567,9 +611,9 @@ checksum = "502d53007c02d7605a05df1c1a73ee436952781653da5d0bf57ad608f66932c1"
 
 [[package]]
 name = "syn"
-version = "1.0.29"
+version = "1.0.30"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bb37da98a55b1d08529362d9cbb863be17556873df2585904ab9d2bc951291d0"
+checksum = "93a56fabc59dce20fe48b6c832cc249c713e7ed88fa28b0ee0a3bfcaae5fe4e2"
 dependencies = [
  "proc-macro2",
  "quote",

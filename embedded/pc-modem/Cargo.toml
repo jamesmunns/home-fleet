@@ -9,7 +9,6 @@ cortex-m = "0.6.2"
 cortex-m-rtfm = "0.5.1"
 cortex-m-rt = "0.6.12"
 bbqueue = "0.4.6"
-asm-delay = "0.7.0"
 embedded-hal = "0.2.3"
 rtt-target = {version = "0.2.0", features = ["cortex-m"] }
 
