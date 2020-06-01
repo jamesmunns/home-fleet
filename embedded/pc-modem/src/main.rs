@@ -170,6 +170,7 @@ const APP: () = {
                     timer.delay_ms(50u8)
                 },
                 Ok(Some(m)) => {
+                    ctr = 0;
                     rprintln!("Got {:?}", m);
                     match esb_app.send(&resp) {
                         Ok(_) => rprintln!("Sent {:?}", resp),

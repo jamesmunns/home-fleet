@@ -119,7 +119,9 @@ const APP: () = {
         };
         let addresses = Addresses::default();
         let config = ConfigBuilder::default()
-            .maximum_transmit_attempts(0)
+            .wait_for_ack_timeout(1500)
+            .retransmit_delay(2000)
+            .maximum_transmit_attempts(3)
             .check()
             .unwrap();
         let (esb_app, esb_irq, esb_timer) = BUFFER
