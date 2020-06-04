@@ -68,7 +68,7 @@ use hal::{
 
 use fleet_esb::prx::FleetRadioPrx;
 
-use fleet_icd::radio::{DeviceToHost, GeneralHostMessage, HostToDevice};
+use fleet_icd::radio::{DeviceToHost, GeneralHostMessage, HostToDevice, PlantLightHostMessage};
 
 use embedded_hal::blocking::delay::DelayMs;
 
@@ -141,22 +141,30 @@ const APP: () = {
         let resp = HostToDevice::General(GeneralHostMessage::Ping);
 
         let mut ctr = 0;
+        let mut relay_ctr = 0;
 
         loop {
             match esb_app.receive() {
                 Ok(None) => {
                     ctr += 1;
 
-                    if ctr == 20 {
+                    if ctr == 3 {
                         rprintln!("zzz");
                         ctr = 0;
                     }
 
-                    timer.delay_ms(50u8)
+                    timer.delay_ms(1000u32)
                 }
                 Ok(Some(m)) => {
                     ctr = 0;
                     rprintln!("Got {:?}", m);
+                    let resp = HostToDevice::PlantLight(PlantLightHostMessage::SetRelay { relay: relay_ctr % 4, state: relay_ctr < 4 });
+
+                    relay_ctr += 1;
+                    if relay_ctr >= 8 {
+                        relay_ctr = 0;
+                    }
+
                     match esb_app.send(&resp, 0) {
                         Ok(_) => rprintln!("Sent {:?}", resp),
                         Err(e) => rprintln!("TxErr: {:?}", e),

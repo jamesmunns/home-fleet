@@ -35,6 +35,9 @@ macro_rules! config {
 #[macro_use]
 mod config;
 
+mod relays;
+mod timer;
+
 // Import the right HAL/PAC crate, depending on the target chip
 #[cfg(feature = "51")]
 use nrf51_hal as hal;
@@ -57,47 +60,52 @@ use {
         EsbBuffer, EsbIrq, IrqTimer,
     },
     hal::{
-        gpio::Level,
-        pac::{TIMER0, TIMER1, UARTE0},
+        gpio::{Level, OpenDrainConfig},
+        pac::{TIMER0, TIMER1, UARTE0, RTC0},
         uarte::{Baudrate, Parity, Uarte},
-        Rng, Timer,
+        rtc::{RtcInterrupt, Started},
+        clocks::LfOscConfiguration,
+        Rng, Timer, Rtc,
+        target::NVIC,
     },
     rtt_target::{rprintln, rtt_init_print},
 };
 
-use fleet_esb::{ptx::FleetRadioPtx, RollingTimer};
+use fleet_esb::{
+    ptx::FleetRadioPtx,
+    RxMessage,
+};
 
 use fleet_icd::radio::{DeviceToHost, GeneralDeviceMessage, HostToDevice};
 
 use embedded_hal::blocking::delay::DelayMs;
 
-static FAKE_TIME: AtomicU32 = AtomicU32::new(0);
+use relays::{Relays, RelayIdx, RelayState};
+use timer::RollingRtcTimer;
 
-pub struct FakeClock {
-    clock: &'static AtomicU32,
-}
-
-impl RollingTimer for FakeClock {
-    fn get_current_tick(&self) -> u32 {
-        self.clock.fetch_add(1, Ordering::SeqCst)
-    }
-}
+static RTC_STORE: AtomicU32 = AtomicU32::new(0);
 
 static ATTEMPTS_FLAG: AtomicBool = AtomicBool::new(false);
 
 #[rtfm::app(device = crate::hal::pac, peripherals = true)]
 const APP: () = {
     struct Resources {
-        esb_app: FleetRadioPtx<U8192, U8192, DeviceToHost, HostToDevice, FakeClock>,
+        esb_app: FleetRadioPtx<U8192, U8192, DeviceToHost, HostToDevice, RollingRtcTimer>,
         esb_irq: EsbIrq<U8192, U8192, TIMER0, StatePTX>,
         esb_timer: IrqTimer<TIMER0>,
         serial: Uarte<UARTE0>,
         timer: Timer<TIMER1>,
+        relays: Relays<RollingRtcTimer>,
+        rtc: Rtc<RTC0, Started>,
+        rtc_timer: RollingRtcTimer,
     }
 
     #[init]
     fn init(ctx: init::Context) -> init::LateResources {
-        let _clocks = hal::clocks::Clocks::new(ctx.device.CLOCK).enable_ext_hfosc();
+        let clocks = hal::clocks::Clocks::new(ctx.device.CLOCK);
+        let clocks = clocks.enable_ext_hfosc();
+        let clocks = clocks.set_lfclk_src_external(LfOscConfiguration::NoExternalNoBypass);
+        clocks.start_lfclk();
 
         let p0 = hal::gpio::p0::Parts::new(ctx.device.P0);
 
@@ -125,12 +133,9 @@ const APP: () = {
 
         rtt_init_print!();
 
-        if let Some(msg) = panic_persist::get_panic_message_bytes() {
+        if let Some(msg) = panic_persist::get_panic_message_utf8() {
             // write the error message in reasonable chunks
-            for i in msg.chunks(255) {
-                let _ = serial.write(i);
-            }
-            bkpt();
+            rprintln!("{}", msg);
         }
 
         let mut rng = Rng::new(ctx.device.RNG);
@@ -142,9 +147,32 @@ const APP: () = {
                 0x32, 0x33, 0x40, 0x41, 0x42, 0x43, 0x50, 0x51, 0x52, 0x53, 0x60, 0x61, 0x62, 0x63,
                 0x70, 0x71, 0x72, 0x73,
             ],
-            FakeClock { clock: &FAKE_TIME },
-            100,
+            RollingRtcTimer::new(&RTC_STORE),
+            32768 * 2,
             &mut rng,
+        );
+
+        let mut rtc = Rtc::new(ctx.device.RTC0);
+        rtc.set_prescaler(0).ok();
+        rtc.enable_interrupt(RtcInterrupt::Tick, None);
+        rtc.enable_event(RtcInterrupt::Tick);
+        rtc.get_event_triggered(RtcInterrupt::Tick, true);
+        let rtc = rtc.enable_counter();
+
+
+        // Setup LEDS
+        // * 09 - GPIO_30, p10, P0.30
+        // * 12 - GPIO_14, p07, P0.14
+        // * 11 - GPIO_22, p08, P0.22
+        // * 10 - GPIO_31, p09, P0.31
+        let relays = Relays::from_pins(
+            [
+                p0.p0_30.into_open_drain_output(OpenDrainConfig::HighDrive0Disconnect1, Level::High).degrade(),
+                p0.p0_14.into_open_drain_output(OpenDrainConfig::HighDrive0Disconnect1, Level::High).degrade(),
+                p0.p0_22.into_open_drain_output(OpenDrainConfig::HighDrive0Disconnect1, Level::High).degrade(),
+                p0.p0_31.into_open_drain_output(OpenDrainConfig::HighDrive0Disconnect1, Level::High).degrade(),
+            ],
+            RollingRtcTimer::new(&RTC_STORE),
         );
 
         init::LateResources {
@@ -153,27 +181,50 @@ const APP: () = {
             esb_timer,
             serial,
             timer: Timer::new(ctx.device.TIMER1),
+            relays,
+            rtc,
+            rtc_timer: RollingRtcTimer::new(&RTC_STORE),
         }
     }
 
-    #[idle(resources = [serial, esb_app, timer])]
+    #[idle(resources = [serial, esb_app, timer, relays])]
     fn idle(ctx: idle::Context) -> ! {
         let esb_app = ctx.resources.esb_app;
         let timer = ctx.resources.timer;
+        let relays = ctx.resources.relays;
 
         let msg = DeviceToHost::General(GeneralDeviceMessage::InitializeSession);
 
         loop {
+            NVIC::pend(hal::target::Interrupt::RTC0);
             match esb_app.send(&msg, 0) {
                 Ok(_) => rprintln!("Sent {:?}", msg),
                 Err(e) => rprintln!("Send err: {:?}", e),
             };
             timer.delay_ms(250u8);
 
+            use fleet_icd::radio::{
+                HostToDevice, PlantLightHostMessage,
+            };
+
             'rx: loop {
                 match esb_app.receive() {
                     Ok(None) => {
                         break 'rx;
+                    }
+                    Ok(Some(RxMessage { msg: HostToDevice::PlantLight(PlantLightHostMessage::SetRelay{ relay, state }), ..})) => {
+                        relays.set_relay(match relay {
+                            0 => RelayIdx::Relay0,
+                            1 => RelayIdx::Relay1,
+                            2 => RelayIdx::Relay2,
+                            3 => RelayIdx::Relay3,
+                            _ => panic!(),
+                        },
+                        match state {
+                            true => RelayState::On,
+                            false => RelayState::Off,
+                        }
+                    ).ok();
                     }
                     Ok(Some(m)) => {
                         rprintln!("Got msg: {:?}", m);
@@ -184,6 +235,13 @@ const APP: () = {
                 }
             }
         }
+    }
+
+    #[task(binds = RTC0, resources = [rtc, rtc_timer], priority = 1)]
+    fn rtc_tick(ctx: rtc_tick::Context) {
+        // Check and clear interrupt
+        ctx.resources.rtc.get_event_triggered(RtcInterrupt::Tick, true);
+        ctx.resources.rtc_timer.tick();
     }
 
     #[task(binds = RADIO, resources = [esb_irq], priority = 3)]

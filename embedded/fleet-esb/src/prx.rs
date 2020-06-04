@@ -163,44 +163,4 @@ where
 
         result
     }
-
-    // fn check_nonce_and_update(&mut self, nonce: &FleetNonce) -> Result<(), ()> {
-    //     let cur_tick = self.current_tick();
-    //     let min_tick = cur_tick.wrapping_sub(self.tick_window);
-
-    //     // Is the tick >= the last received tick?
-    //     let last_tick_good = if self.last_rx_tick > cur_tick {
-    //         // We have rolled. Make sure the tick is between
-    //         // last and u32::max, OR between zero and current
-    //         (nonce.tick >= self.last_rx_tick) || (nonce.tick <= cur_tick)
-    //     } else {
-    //         (nonce.tick >= self.last_rx_tick) && (nonce.tick <= cur_tick)
-    //     };
-
-    //     // Is the tick >= our minimum acceptable staleness?
-    //     let min_tick_good = if min_tick > cur_tick {
-    //         // We have rolled. Make sure the tick is between
-    //         // min and u32::max, OR between zero and current
-    //         (nonce.tick >= min_tick) || (nonce.tick <= cur_tick)
-    //     } else {
-    //         (nonce.tick >= min_tick) && (nonce.tick <= cur_tick)
-    //     };
-
-    //     // Is the count >= the last received count?
-    //     let count_good = if self.last_rx_count > cur_tick {
-    //         // We have rolled. Blah Blah
-    //         (nonce.msg_count >= self.last_rx_count) || (nonce.msg_count <= self.msg_count)
-    //     } else {
-    //         (nonce.msg_count >= self.last_rx_count) && (nonce.msg_count <= self.msg_count)
-    //     };
-
-    //     if last_tick_good && min_tick_good && count_good {
-    //         // Success, update tracking variables
-    //         self.last_rx_count = nonce.msg_count;
-    //         self.last_rx_tick  = nonce.tick;
-    //         Ok(())
-    //     } else {
-    //         Err(())
-    //     }
-    // }
 }

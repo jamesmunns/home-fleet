@@ -3,6 +3,7 @@ use serde::{Serialize, Deserialize};
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
 pub enum HostToDevice {
     General(GeneralHostMessage),
+    PlantLight(PlantLightHostMessage),
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]

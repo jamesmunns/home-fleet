@@ -33,6 +33,7 @@ path = "../fleet-esb"
 [dependencies.panic-persist]
 version = "0.2.1"
 default-features = false
+features = ["utf8"]
 
 # Disable documentation to avoid spurious rustdoc warnings
 [[bin]]

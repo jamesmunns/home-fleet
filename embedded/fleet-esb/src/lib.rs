@@ -49,13 +49,13 @@ pub struct RxMessage<T>
 where
     T: DeserializeOwned,
 {
-    msg: T,
-    meta: MessageMetadata
+    pub msg: T,
+    pub meta: MessageMetadata
 }
 
 #[derive(Debug)]
 pub struct MessageMetadata {
-    pipe: u8,
+    pub pipe: u8,
 }
 
 impl<'a> AsRef<[u8]> for LilBuf<'a> {
