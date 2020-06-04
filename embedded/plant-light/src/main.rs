@@ -54,33 +54,29 @@ use {
         fmt::Write,
         sync::atomic::{AtomicBool, AtomicU32, Ordering},
     },
-    cortex_m::asm::bkpt,
     esb::{
         consts::*, irq::StatePTX, Addresses, BBBuffer, ConfigBuilder, ConstBBBuffer, Error,
         EsbBuffer, EsbIrq, IrqTimer,
     },
     hal::{
-        gpio::{Level, OpenDrainConfig},
-        pac::{TIMER0, TIMER1, UARTE0, RTC0},
-        uarte::{Baudrate, Parity, Uarte},
-        rtc::{RtcInterrupt, Started},
         clocks::LfOscConfiguration,
-        Rng, Timer, Rtc,
+        gpio::{Level, OpenDrainConfig},
+        pac::{RTC0, TIMER0, TIMER1, UARTE0},
+        rtc::{RtcInterrupt, Started},
         target::NVIC,
+        uarte::{Baudrate, Parity, Uarte},
+        Rng, Rtc, Timer,
     },
     rtt_target::{rprintln, rtt_init_print},
 };
 
-use fleet_esb::{
-    ptx::FleetRadioPtx,
-    RxMessage,
-};
+use fleet_esb::{ptx::FleetRadioPtx, RxMessage};
 
 use fleet_icd::radio::{DeviceToHost, GeneralDeviceMessage, HostToDevice};
 
 use embedded_hal::blocking::delay::DelayMs;
 
-use relays::{Relays, RelayIdx, RelayState};
+use relays::Relays;
 use timer::RollingRtcTimer;
 
 static RTC_STORE: AtomicU32 = AtomicU32::new(0);
@@ -159,7 +155,6 @@ const APP: () = {
         rtc.get_event_triggered(RtcInterrupt::Tick, true);
         let rtc = rtc.enable_counter();
 
-
         // Setup LEDS
         // * 09 - GPIO_30, p10, P0.30
         // * 12 - GPIO_14, p07, P0.14
@@ -167,10 +162,18 @@ const APP: () = {
         // * 10 - GPIO_31, p09, P0.31
         let relays = Relays::from_pins(
             [
-                p0.p0_30.into_open_drain_output(OpenDrainConfig::HighDrive0Disconnect1, Level::High).degrade(),
-                p0.p0_14.into_open_drain_output(OpenDrainConfig::HighDrive0Disconnect1, Level::High).degrade(),
-                p0.p0_22.into_open_drain_output(OpenDrainConfig::HighDrive0Disconnect1, Level::High).degrade(),
-                p0.p0_31.into_open_drain_output(OpenDrainConfig::HighDrive0Disconnect1, Level::High).degrade(),
+                p0.p0_30
+                    .into_open_drain_output(OpenDrainConfig::HighDrive0Disconnect1, Level::High)
+                    .degrade(),
+                p0.p0_14
+                    .into_open_drain_output(OpenDrainConfig::HighDrive0Disconnect1, Level::High)
+                    .degrade(),
+                p0.p0_22
+                    .into_open_drain_output(OpenDrainConfig::HighDrive0Disconnect1, Level::High)
+                    .degrade(),
+                p0.p0_31
+                    .into_open_drain_output(OpenDrainConfig::HighDrive0Disconnect1, Level::High)
+                    .degrade(),
             ],
             RollingRtcTimer::new(&RTC_STORE),
         );
@@ -203,28 +206,19 @@ const APP: () = {
             };
             timer.delay_ms(250u8);
 
-            use fleet_icd::radio::{
-                HostToDevice, PlantLightHostMessage,
-            };
+            use fleet_icd::radio::{HostToDevice, PlantLightHostMessage};
 
             'rx: loop {
                 match esb_app.receive() {
                     Ok(None) => {
                         break 'rx;
                     }
-                    Ok(Some(RxMessage { msg: HostToDevice::PlantLight(PlantLightHostMessage::SetRelay{ relay, state }), ..})) => {
-                        relays.set_relay(match relay {
-                            0 => RelayIdx::Relay0,
-                            1 => RelayIdx::Relay1,
-                            2 => RelayIdx::Relay2,
-                            3 => RelayIdx::Relay3,
-                            _ => panic!(),
-                        },
-                        match state {
-                            true => RelayState::On,
-                            false => RelayState::Off,
-                        }
-                    ).ok();
+                    Ok(Some(RxMessage {
+                        msg:
+                            HostToDevice::PlantLight(PlantLightHostMessage::SetRelay { relay, state }),
+                        ..
+                    })) => {
+                        relays.set_relay(relay, state).ok();
                     }
                     Ok(Some(m)) => {
                         rprintln!("Got msg: {:?}", m);
@@ -240,7 +234,9 @@ const APP: () = {
     #[task(binds = RTC0, resources = [rtc, rtc_timer], priority = 1)]
     fn rtc_tick(ctx: rtc_tick::Context) {
         // Check and clear interrupt
-        ctx.resources.rtc.get_event_triggered(RtcInterrupt::Tick, true);
+        ctx.resources
+            .rtc
+            .get_event_triggered(RtcInterrupt::Tick, true);
         ctx.resources.rtc_timer.tick();
     }
 
@@ -262,12 +258,3 @@ const APP: () = {
 };
 
 use panic_persist;
-
-// #[inline(never)]
-// #[panic_handler]
-// fn panic(info: &PanicInfo) -> ! {
-//     rprintln!("{}", info);
-//     loop {
-//         compiler_fence(Ordering::SeqCst);
-//     }
-// }

@@ -1,23 +1,12 @@
-use crate::hal::gpio::{Pin, Output, OpenDrain};
-use fleet_esb::RollingTimer;
+use crate::hal::gpio::{OpenDrain, Output, Pin};
+use crate::timer::TICKS_PER_SECOND;
 use embedded_hal::digital::v2::OutputPin;
 use embedded_hal::digital::v2::StatefulOutputPin;
-use crate::timer::TICKS_PER_SECOND;
+use fleet_esb::RollingTimer;
+use fleet_icd::radio::{RelayIdx, RelayState};
 
 const MIN_TOGGLE_DELTA: u32 = 3 * TICKS_PER_SECOND;
 const COMMS_TIMEOUT: u32 = 60 * TICKS_PER_SECOND;
-
-pub enum RelayState {
-    Off,
-    On,
-}
-
-pub enum RelayIdx {
-    Relay0,
-    Relay1,
-    Relay2,
-    Relay3,
-}
 
 pub struct Relays<T>
 where
@@ -46,10 +35,7 @@ impl<T> Relays<T>
 where
     T: RollingTimer,
 {
-    pub fn from_pins(
-        pins: [Pin<Output<OpenDrain>>; 4],
-        timer: T,
-    ) -> Self {
+    pub fn from_pins(pins: [Pin<Output<OpenDrain>>; 4], timer: T) -> Self {
         let now = timer.get_current_tick();
         let [mut pin_0, mut pin_1, mut pin_2, mut pin_3] = pins;
 
@@ -86,14 +72,13 @@ where
             return Err(());
         }
 
-
         let is_low = relay.gpio.is_set_low().map_err(drop)?;
 
         match state {
             RelayState::On if !is_low => {
                 relay.gpio.set_low().ok();
                 relay.last_toggle_ms = now;
-            },
+            }
             RelayState::Off if is_low => {
                 relay.gpio.set_high().ok();
                 relay.last_toggle_ms = now;
@@ -120,10 +105,26 @@ where
 
     pub fn current_state(&self) -> [RelayState; 4] {
         [
-            if self.relays[0].gpio.is_set_low().unwrap() { RelayState::On } else { RelayState::Off },
-            if self.relays[1].gpio.is_set_low().unwrap() { RelayState::On } else { RelayState::Off },
-            if self.relays[2].gpio.is_set_low().unwrap() { RelayState::On } else { RelayState::Off },
-            if self.relays[3].gpio.is_set_low().unwrap() { RelayState::On } else { RelayState::Off },
+            if self.relays[0].gpio.is_set_low().unwrap() {
+                RelayState::On
+            } else {
+                RelayState::Off
+            },
+            if self.relays[1].gpio.is_set_low().unwrap() {
+                RelayState::On
+            } else {
+                RelayState::Off
+            },
+            if self.relays[2].gpio.is_set_low().unwrap() {
+                RelayState::On
+            } else {
+                RelayState::Off
+            },
+            if self.relays[3].gpio.is_set_low().unwrap() {
+                RelayState::On
+            } else {
+                RelayState::Off
+            },
         ]
     }
 }

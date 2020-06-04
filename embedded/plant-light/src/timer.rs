@@ -9,9 +9,7 @@ pub struct RollingRtcTimer {
 
 impl RollingRtcTimer {
     pub fn new(store: &'static AtomicU32) -> Self {
-        Self {
-            time: store
-        }
+        Self { time: store }
     }
 
     // Should be called by the rtc interrupt

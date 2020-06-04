@@ -32,13 +32,27 @@ pub enum PlantLightDeviceMessage {
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
 pub enum PlantLightHostMessage {
     SetRelay {
-        relay: u8,
-        state: bool,
+        relay: RelayIdx,
+        state: RelayState,
     },
     SetCounters {
         on_lifetime: u32,
         off_lifetime: u32,
     }
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
+pub enum RelayState {
+    Off,
+    On,
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
+pub enum RelayIdx {
+    Relay0,
+    Relay1,
+    Relay2,
+    Relay3,
 }
 
 
