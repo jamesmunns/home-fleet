@@ -60,6 +60,7 @@ use {
     rtt_target::{rprintln, rtt_init_print},
 };
 
+
 #[cfg(not(feature = "51"))]
 use hal::{
     pac::UARTE0,
@@ -68,9 +69,8 @@ use hal::{
 
 use fleet_esb::prx::FleetRadioPrx;
 
-use fleet_icd::radio::{DeviceToHost, GeneralHostMessage, HostToDevice, PlantLightHostMessage};
+use fleet_icd::radio::{DeviceToHost, HostToDevice, PlantLightHostMessage, RelayIdx, RelayState};
 
-use embedded_hal::blocking::delay::DelayMs;
 
 #[rtfm::app(device = crate::hal::pac, peripherals = true)]
 const APP: () = {
@@ -138,41 +138,46 @@ const APP: () = {
         let esb_app = ctx.resources.esb_app;
         let timer = ctx.resources.timer;
 
-        let resp = HostToDevice::General(GeneralHostMessage::Ping);
+        let mut on = false;
 
-        let mut ctr = 0;
-        let mut relay_ctr = 0;
+        use embedded_hal::timer::CountDown;
+
+        timer.start(5_000_000u32);
 
         loop {
+            use fleet_esb::RxMessage;
+            use fleet_icd::radio::GeneralDeviceMessage;
+
             match esb_app.receive() {
-                Ok(None) => {
-                    ctr += 1;
+                Ok(None) => { }
+                Ok(Some(RxMessage { msg: DeviceToHost::General(GeneralDeviceMessage::InitializeSession), .. })) => {
 
-                    if ctr == 3 {
-                        rprintln!("zzz");
-                        ctr = 0;
-                    }
-
-                    timer.delay_ms(1000u32)
                 }
                 Ok(Some(m)) => {
-                    ctr = 0;
                     rprintln!("Got {:?}", m);
-                    let resp = HostToDevice::PlantLight(PlantLightHostMessage::SetRelay { relay: relay_ctr % 4, state: relay_ctr < 4 });
+                }
+                Err(e) => {
+                    rprintln!("RxErr: {:?}", e);
+                }
+            }
 
-                    relay_ctr += 1;
-                    if relay_ctr >= 8 {
-                        relay_ctr = 0;
-                    }
+            if timer.wait().is_ok() {
+                timer.start(6_000_000u32);
+                let state = if on {
+                    RelayState::Off
+                } else {
+                    RelayState::On
+                };
+                on = !on;
 
+                for relay in [RelayIdx::Relay0, RelayIdx::Relay1, RelayIdx::Relay2, RelayIdx::Relay3].iter() {
+                    let resp = HostToDevice::PlantLight(PlantLightHostMessage::SetRelay { relay: *relay, state });
                     match esb_app.send(&resp, 0) {
                         Ok(_) => rprintln!("Sent {:?}", resp),
                         Err(e) => rprintln!("TxErr: {:?}", e),
                     }
                 }
-                Err(e) => {
-                    rprintln!("RxErr: {:?}", e);
-                }
+
             }
         }
     }

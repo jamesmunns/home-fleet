@@ -201,10 +201,10 @@ const APP: () = {
         loop {
             NVIC::pend(hal::target::Interrupt::RTC0);
             match esb_app.send(&msg, 0) {
-                Ok(_) => rprintln!("Sent {:?}", msg),
+                Ok(_) => { /*rprintln!("Sent {:?}", msg) */ },
                 Err(e) => rprintln!("Send err: {:?}", e),
             };
-            timer.delay_ms(250u8);
+            timer.delay_ms(10u8);
 
             use fleet_icd::radio::{HostToDevice, PlantLightHostMessage};
 
@@ -218,6 +218,7 @@ const APP: () = {
                             HostToDevice::PlantLight(PlantLightHostMessage::SetRelay { relay, state }),
                         ..
                     })) => {
+                        rprintln!("Got relay: {:?} {:?}", relay, state);
                         relays.set_relay(relay, state).ok();
                     }
                     Ok(Some(m)) => {
@@ -238,6 +239,9 @@ const APP: () = {
             .rtc
             .get_event_triggered(RtcInterrupt::Tick, true);
         ctx.resources.rtc_timer.tick();
+
+        use fleet_esb::RollingTimer;
+
     }
 
     #[task(binds = RADIO, resources = [esb_irq], priority = 3)]
