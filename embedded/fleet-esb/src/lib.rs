@@ -1,5 +1,4 @@
 #![no_std]
-#![allow(dead_code)] // todo
 
 #[cfg(feature = "51")]
 use nrf51_hal as hal;
@@ -15,6 +14,8 @@ use chacha20poly1305::aead::{Buffer, Error as AeadError};
 use core::cmp::min;
 
 use serde::de::DeserializeOwned;
+use esb::Error as EsbError;
+use postcard::Error as PostcardError;
 
 pub mod nonce;
 pub mod prx;
@@ -22,21 +23,31 @@ pub mod ptx;
 
 #[derive(Debug)]
 pub enum Error {
-    Unknown,
-
-    TempEmptyAck,
     PacketTooSmol,
     BadNonce,
     InvalidNonce,
-    BufferTooSmol,
-    QueueFull,
-    HeaderError,
 
-    Decrypt,
-    Encrypt,
+    Esb(EsbError),
+    Postcard(PostcardError),
+    Crypt(AeadError),
+}
 
-    Deser,
-    Ser,
+impl From<EsbError> for Error {
+    fn from(err: EsbError) -> Self {
+        Error::Esb(err)
+    }
+}
+
+impl From<PostcardError> for Error {
+    fn from(err: PostcardError) -> Self {
+        Error::Postcard(err)
+    }
+}
+
+impl From<AeadError> for Error {
+    fn from(err: AeadError) -> Self {
+        Error::Crypt(err)
+    }
 }
 
 struct LilBuf<'a> {

@@ -80,16 +80,14 @@ where
             .pid(0) // todo
             .pipe(pipe)
             .no_ack(false)
-            .check()
-            .map_err(|_| Error::HeaderError)?;
+            .check()?;
 
         let mut grant = self
             .app
-            .grant_packet(header)
-            .map_err(|_| Error::QueueFull)?;
+            .grant_packet(header)?;
 
         // serialize directly to buffer
-        let used = to_slice(msg, &mut grant).map_err(|_| Error::Ser)?.len();
+        let used = to_slice(msg, &mut grant)?.len();
 
         // Update nonce vars
         self.msg_count = self.msg_count.wrapping_add(1);
@@ -111,12 +109,10 @@ where
 
         // Encrypt
         self.crypt
-            .encrypt_in_place(&nonce, b"", &mut buf)
-            .map_err(|_| Error::Encrypt)?;
+            .encrypt_in_place(&nonce, b"", &mut buf)?;
 
         // Add nonce to payload
-        buf.extend_from_slice(&nonce)
-            .map_err(|_| Error::BufferTooSmol)?;
+        buf.extend_from_slice(&nonce)?;
 
         // Extract the bytes used of the LilBuf
         let used = buf.used.into();
@@ -188,9 +184,9 @@ where
 
         match self.crypt.decrypt_in_place(&nonce, b"", &mut buf) {
             Ok(()) => {}
-            Err(_e) => {
+            Err(e) => {
                 packet.release();
-                return Err(Error::Decrypt);
+                return Err(e.into());
             }
         }
 
@@ -204,7 +200,7 @@ where
                 };
                 Ok(Some(resp))
             },
-            Err(_) => Err(Error::Deser),
+            Err(e) => Err(e.into()),
         };
         packet.release();
         result
