@@ -26,6 +26,7 @@ where
 
     tick_window: u32,
     tick_offset: u32,
+    last_tx_tick: u32,
     last_rx_tick: u32,
 
     msg_count: u32,
@@ -68,6 +69,7 @@ where
 
             last_rx_count: msg_count,
             last_rx_tick: tick_offset,
+            last_tx_tick: tick_offset,
 
             _ot: PhantomData,
             _it: PhantomData,
@@ -120,6 +122,9 @@ where
         // Commit payload
         grant.commit(used);
 
+        // Update TX
+        self.last_tx_tick = tick;
+
         // Kick the radio
         self.app.start_tx();
 
@@ -128,6 +133,10 @@ where
 
     pub fn current_tick(&self) -> u32 {
         self.tick.get_current_tick().wrapping_add(self.tick_offset)
+    }
+
+    pub fn ticks_since_last_tx(&self) -> u32 {
+        self.current_tick().wrapping_sub(self.last_tx_tick)
     }
 
     pub fn receive(&mut self) -> Result<Option<RxMessage<IncomingTy>>, Error> {
