@@ -5,7 +5,8 @@
 protocol = "Swd"
 # The speed in kHz of the data link to the target.
 # speed = 1337
-probe_selector = "1366:0105:000760008073"
+# probe_selector = "1366:0105:000760008073"
+probe_selector = "1366:0105:000760000875"
 
 [flashing]
 # Whether or not the target should be flashed.

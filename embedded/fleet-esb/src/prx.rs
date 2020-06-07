@@ -8,7 +8,9 @@ use chacha20poly1305::ChaCha8Poly1305; // Or `XChaCha20Poly1305`
 
 use postcard::{from_bytes, to_slice};
 
-use crate::{nonce::FleetNonce, Error, LilBuf, MIN_CRYPT_SIZE, NONCE_SIZE, RxMessage, MessageMetadata};
+use crate::{
+    nonce::FleetNonce, Error, LilBuf, MessageMetadata, RxMessage, MIN_CRYPT_SIZE, NONCE_SIZE,
+};
 
 pub struct FleetRadioPrx<OutgoingLen, IncomingLen, OutgoingTy, IncomingTy>
 where
@@ -59,9 +61,7 @@ where
             .no_ack(false)
             .check()?;
 
-        let mut grant = self
-            .app
-            .grant_packet(header)?;
+        let mut grant = self.app.grant_packet(header)?;
 
         // serialize directly to buffer
         let used = to_slice(msg, &mut grant)?.len();
@@ -81,8 +81,7 @@ where
         };
 
         // Encrypt
-        self.crypt
-            .encrypt_in_place(&nonce, b"", &mut buf)?;
+        self.crypt.encrypt_in_place(&nonce, b"", &mut buf)?;
 
         // Add nonce to payload
         buf.extend_from_slice(&nonce)?;
@@ -147,11 +146,11 @@ where
                 let resp = RxMessage {
                     msg: pkt,
                     meta: MessageMetadata {
-                        pipe: packet.pipe()
-                    }
+                        pipe: packet.pipe(),
+                    },
                 };
                 Ok(Some(resp))
-            },
+            }
             Err(e) => Err(e.into()),
         };
 

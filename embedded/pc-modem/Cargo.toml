@@ -29,6 +29,12 @@ path = "../../shared/fleet-icd"
 version = "0.1.0"
 path = "../fleet-esb"
 
+[dependencies.fleet-keys]
+version = "0.1.0"
+path = "../fleet-keys"
+default-features = false
+features = ["prod"]
+
 [dependencies.panic-persist]
 version = "0.2.1"
 default-features = false

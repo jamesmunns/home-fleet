@@ -58,15 +58,13 @@ pub enum RelayIdx {
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
 pub struct ShelfStatus {
-    relays: [RelayStatus; 4]
+    pub relays: [RelayStatus; 4]
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
 pub struct RelayStatus {
-    enabled: bool,
-    seconds_in_state: u32,
-    seconds_on_lifetime: u32,
-    seconds_off_lifetime: u32,
+    pub enabled: RelayState,
+    pub seconds_in_state: u32,
 }
 
 

@@ -71,10 +71,14 @@ use {
 
 use fleet_esb::{ptx::FleetRadioPtx, RxMessage};
 
-use fleet_icd::radio::{DeviceToHost, GeneralDeviceMessage, HostToDevice, PlantLightHostMessage};
+use fleet_icd::radio::{
+    DeviceToHost, GeneralDeviceMessage, HostToDevice, PlantLightDeviceMessage,
+    PlantLightHostMessage,
+};
+
+use fleet_keys::keys::KEY;
 
 use embedded_hal::blocking::delay::DelayMs;
-
 
 use relays::Relays;
 use timer::RollingRtcTimer;
@@ -95,7 +99,7 @@ const APP: () = {
         rtc_timer2: RollingRtcTimer,
     }
 
-    #[init(spawn = [relay_periodic, rx_periodic])]
+    #[init(spawn = [relay_periodic, rx_periodic, relay_status])]
     fn init(ctx: init::Context) -> init::LateResources {
         let clocks = hal::clocks::Clocks::new(ctx.device.CLOCK);
         let clocks = clocks.enable_ext_hfosc();
@@ -137,11 +141,7 @@ const APP: () = {
 
         let radio = FleetRadioPtx::new(
             esb_app,
-            &[
-                0x00, 0x01, 0x02, 0x03, 0x10, 0x11, 0x12, 0x13, 0x20, 0x21, 0x22, 0x23, 0x30, 0x31,
-                0x32, 0x33, 0x40, 0x41, 0x42, 0x43, 0x50, 0x51, 0x52, 0x53, 0x60, 0x61, 0x62, 0x63,
-                0x70, 0x71, 0x72, 0x73,
-            ],
+            KEY.key(),
             RollingRtcTimer::new(),
             timer::TICKS_PER_SECOND * 2,
             &mut rng,
@@ -161,16 +161,16 @@ const APP: () = {
         // * 10 - GPIO_31, p09, P0.31
         let relays = Relays::from_pins(
             [
-                p0.p0_30
+                p0.p0_15
                     .into_open_drain_output(OpenDrainConfig::HighDrive0Disconnect1, Level::High)
                     .degrade(),
-                p0.p0_14
+                p0.p0_08
                     .into_open_drain_output(OpenDrainConfig::HighDrive0Disconnect1, Level::High)
                     .degrade(),
-                p0.p0_22
+                p0.p0_07
                     .into_open_drain_output(OpenDrainConfig::HighDrive0Disconnect1, Level::High)
                     .degrade(),
-                p0.p0_31
+                p0.p0_04
                     .into_open_drain_output(OpenDrainConfig::HighDrive0Disconnect1, Level::High)
                     .degrade(),
             ],
@@ -181,6 +181,7 @@ const APP: () = {
 
         ctx.spawn.rx_periodic().ok();
         ctx.spawn.relay_periodic().ok();
+        ctx.spawn.relay_status().ok();
 
         rprintln!("Post Spawn");
 
@@ -235,7 +236,20 @@ const APP: () = {
     fn relay_periodic(ctx: relay_periodic::Context) {
         rprintln!("Enter relay_per");
         ctx.resources.relays.check_timeout();
-        ctx.schedule.relay_periodic(ctx.scheduled + timer::SIGNED_TICKS_PER_SECOND).ok();
+        ctx.schedule
+            .relay_periodic(ctx.scheduled + timer::SIGNED_TICKS_PER_SECOND)
+            .ok();
+    }
+
+    #[task(schedule = [relay_status], resources = [relays, esb_app])]
+    fn relay_status(ctx: relay_status::Context) {
+        const INTERVAL: i32 = timer::SIGNED_TICKS_PER_SECOND * 3;
+
+        let stat = ctx.resources.relays.current_state();
+        let msg = DeviceToHost::PlantLight(PlantLightDeviceMessage::Status(stat));
+        ctx.resources.esb_app.send(&msg, 0).ok();
+
+        ctx.schedule.relay_status(ctx.scheduled + INTERVAL).ok();
     }
 
     #[task(schedule = [rx_periodic], spawn = [relay_command], resources = [esb_app])]
@@ -244,20 +258,20 @@ const APP: () = {
         const INTERVAL: i32 = timer::SIGNED_TICKS_PER_SECOND / 100;
         // Roughly 100ms
         const POLL_PRX_INTERVAL: u32 = timer::TICKS_PER_SECOND / 10;
+        const RESET_INTERVAL: u32 = timer::TICKS_PER_SECOND * 60;
 
         let esb_app = ctx.resources.esb_app;
 
-
         'rx: loop {
-            let resp = esb_app.receive();
-            match resp {
+            match esb_app.receive() {
                 Ok(None) => break 'rx,
-                Ok(Some(RxMessage { msg: HostToDevice::PlantLight(m), .. })) => {
-                    match ctx.spawn.relay_command(m) {
-                        Ok(_) => {},
-                        Err(e) => rprintln!("spawn err: {:?}", e),
-                    }
-                }
+                Ok(Some(RxMessage {
+                    msg: HostToDevice::PlantLight(m),
+                    ..
+                })) => match ctx.spawn.relay_command(m) {
+                    Ok(_) => {}
+                    Err(e) => rprintln!("spawn err: {:?}", e),
+                },
                 Ok(Some(m)) => {
                     rprintln!("Got unproc'd msg: {:?}", m);
                 }
@@ -267,14 +281,18 @@ const APP: () = {
             }
         }
 
-
         if esb_app.ticks_since_last_tx() > POLL_PRX_INTERVAL {
             let msg = DeviceToHost::General(GeneralDeviceMessage::InitializeSession);
 
             match esb_app.send(&msg, 0) {
-                Ok(_) => { /*rprintln!("Sent {:?}", msg) */ },
+                Ok(_) => { /*rprintln!("Sent {:?}", msg) */ }
                 Err(e) => rprintln!("Send err: {:?}", e),
             }
+        }
+
+        // Decide if we should watchdog
+        if esb_app.ticks_since_last_rx() > RESET_INTERVAL {
+            panic!("It's quiet, tooooo quiet.");
         }
 
         ctx.schedule.rx_periodic(ctx.scheduled + INTERVAL).ok();
@@ -284,7 +302,7 @@ const APP: () = {
     fn relay_command(ctx: relay_command::Context, cmd: PlantLightHostMessage) {
         rprintln!("Enter relay_cmd");
 
-        if let PlantLightHostMessage::SetRelay{ relay, state } = cmd {
+        if let PlantLightHostMessage::SetRelay { relay, state } = cmd {
             ctx.resources.relays.set_relay(relay, state).ok();
         }
     }
@@ -292,8 +310,8 @@ const APP: () = {
     // Sacrificial hardware interrupts
     extern "C" {
         fn SWI1_EGU1();
-        fn SWI2_EGU2();
-        fn SWI3_EGU3();
+    // fn SWI2_EGU2();
+    // fn SWI3_EGU3();
     }
 };
 

@@ -10,7 +10,10 @@ use crate::hal::Rng;
 
 use postcard::{from_bytes, to_slice};
 
-use crate::{nonce::FleetNonce, Error, LilBuf, RollingTimer, MIN_CRYPT_SIZE, NONCE_SIZE, RxMessage, MessageMetadata};
+use crate::{
+    nonce::FleetNonce, Error, LilBuf, MessageMetadata, RollingTimer, RxMessage, MIN_CRYPT_SIZE,
+    NONCE_SIZE,
+};
 
 pub struct FleetRadioPtx<OutgoingLen, IncomingLen, OutgoingTy, IncomingTy, Tick>
 where
@@ -84,9 +87,7 @@ where
             .no_ack(false)
             .check()?;
 
-        let mut grant = self
-            .app
-            .grant_packet(header)?;
+        let mut grant = self.app.grant_packet(header)?;
 
         // serialize directly to buffer
         let used = to_slice(msg, &mut grant)?.len();
@@ -110,8 +111,7 @@ where
         };
 
         // Encrypt
-        self.crypt
-            .encrypt_in_place(&nonce, b"", &mut buf)?;
+        self.crypt.encrypt_in_place(&nonce, b"", &mut buf)?;
 
         // Add nonce to payload
         buf.extend_from_slice(&nonce)?;
@@ -137,6 +137,10 @@ where
 
     pub fn ticks_since_last_tx(&self) -> u32 {
         self.current_tick().wrapping_sub(self.last_tx_tick)
+    }
+
+    pub fn ticks_since_last_rx(&self) -> u32 {
+        self.current_tick().wrapping_sub(self.last_rx_tick)
     }
 
     pub fn receive(&mut self) -> Result<Option<RxMessage<IncomingTy>>, Error> {
@@ -204,11 +208,11 @@ where
                 let resp = RxMessage {
                     msg: pkt,
                     meta: MessageMetadata {
-                        pipe: packet.pipe()
-                    }
+                        pipe: packet.pipe(),
+                    },
                 };
                 Ok(Some(resp))
-            },
+            }
             Err(e) => Err(e.into()),
         };
         packet.release();

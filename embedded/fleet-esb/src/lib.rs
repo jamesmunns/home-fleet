@@ -13,9 +13,9 @@ use chacha20poly1305::aead::{Buffer, Error as AeadError};
 
 use core::cmp::min;
 
-use serde::de::DeserializeOwned;
 use esb::Error as EsbError;
 use postcard::Error as PostcardError;
+use serde::de::DeserializeOwned;
 
 pub mod nonce;
 pub mod prx;
@@ -61,7 +61,7 @@ where
     T: DeserializeOwned,
 {
     pub msg: T,
-    pub meta: MessageMetadata
+    pub meta: MessageMetadata,
 }
 
 #[derive(Debug)]

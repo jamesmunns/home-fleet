@@ -230,6 +230,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "fleet-keys"
+version = "0.1.0"
+
+[[package]]
 name = "fpa"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -442,6 +446,7 @@ dependencies = [
  "esb",
  "fleet-esb",
  "fleet-icd",
+ "fleet-keys",
  "nrf51-hal",
  "nrf52810-hal",
  "nrf52832-hal",
@@ -463,6 +468,7 @@ dependencies = [
  "esb",
  "fleet-esb",
  "fleet-icd",
+ "fleet-keys",
  "nrf51-hal",
  "nrf52810-hal",
  "nrf52832-hal",
