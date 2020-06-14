@@ -1,3 +1,4 @@
+use esb::payload::PayloadR;
 use esb::{ArrayLength, EsbApp, EsbHeader};
 
 use core::marker::PhantomData;
@@ -96,14 +97,10 @@ where
         self.msg_count = self.msg_count.wrapping_add(1);
         let tick = self.current_tick();
 
+        let nonce_bytes = FleetNonce { tick, msg_count: self.msg_count }.to_bytes();
+
         // Create nonce
-        let nonce = GenericArray::clone_from_slice(
-            &FleetNonce {
-                tick,
-                msg_count: self.msg_count,
-            }
-            .to_bytes(),
-        );
+        let ga_nonce = GenericArray::from_slice(&nonce_bytes);
 
         let mut buf = LilBuf {
             buf: &mut grant,
@@ -111,10 +108,10 @@ where
         };
 
         // Encrypt
-        self.crypt.encrypt_in_place(&nonce, b"", &mut buf)?;
+        self.crypt.encrypt_in_place(&ga_nonce, b"", &mut buf)?;
 
         // Add nonce to payload
-        buf.extend_from_slice(&nonce)?;
+        buf.extend_from_slice(&ga_nonce)?;
 
         // Extract the bytes used of the LilBuf
         let used = buf.used.into();
@@ -155,14 +152,6 @@ where
                     continue;
                 }
 
-                // We didn't even get enough bytes for the crypto
-                // header (and a 1 byte payload). Release packet and
-                // return error
-                Some(pkt) if pkt.payload_len() <= MIN_CRYPT_SIZE => {
-                    pkt.release();
-                    return Err(Error::PacketTooSmol);
-                }
-
                 // We got a potentially good one!
                 Some(pkt) => {
                     break pkt;
@@ -170,56 +159,46 @@ where
             };
         };
 
-        let len = packet.payload_len();
-        let (payload, nonce) = packet.split_at_mut(len - NONCE_SIZE);
-        let nonce = match FleetNonce::try_from_bytes(nonce) {
-            Ok(n) => n,
-            Err(_e) => {
-                packet.release();
-                return Err(Error::BadNonce);
-            }
-        };
 
-        // Nonce check!
-        match self.check_nonce_and_update(&nonce) {
-            Ok(()) => {}
-            Err(()) => {
-                packet.release();
-                return Err(Error::InvalidNonce);
-            }
+        let result = self.process_rx_frame(&mut packet);
+        packet.release();
+        result.map(Option::Some)
+    }
+
+    fn process_rx_frame(&mut self, frame: &mut PayloadR<IncomingLen>) -> Result<RxMessage<IncomingTy>, Error> {
+        // We didn't even get enough bytes for the crypto
+        // header (and a 1 byte payload). Release packet and
+        // return error
+        if frame.payload_len() <= MIN_CRYPT_SIZE {
+            return Err(Error::PacketTooSmol);
         }
 
-        let nonce = GenericArray::clone_from_slice(&nonce.to_bytes());
+        let len = frame.payload_len();
+        let (payload, nonce_bytes) = frame.split_at_mut(len - NONCE_SIZE);
+        let fleet_nonce = FleetNonce::try_from_bytes(nonce_bytes)?;
+
+        // Nonce check!
+        self.check_nonce_and_update(&fleet_nonce)?;
+
+        let ga_nonce = GenericArray::from_slice(nonce_bytes);
         let mut buf = LilBuf {
             used: payload.len() as u8,
             buf: payload,
         };
 
-        match self.crypt.decrypt_in_place(&nonce, b"", &mut buf) {
-            Ok(()) => {}
-            Err(e) => {
-                packet.release();
-                return Err(e.into());
-            }
-        }
+        self.crypt.decrypt_in_place(ga_nonce, b"", &mut buf)?;
 
-        let result = match from_bytes(buf.as_ref()) {
-            Ok(pkt) => {
-                let resp = RxMessage {
-                    msg: pkt,
-                    meta: MessageMetadata {
-                        pipe: packet.pipe(),
-                    },
-                };
-                Ok(Some(resp))
+        from_bytes(buf.as_ref()).map(|pkt| {
+            RxMessage {
+                msg: pkt,
+                meta: MessageMetadata {
+                    pipe: frame.pipe(),
+                },
             }
-            Err(e) => Err(e.into()),
-        };
-        packet.release();
-        result
+        }).map_err(|e| e.into())
     }
 
-    fn check_nonce_and_update(&mut self, nonce: &FleetNonce) -> Result<(), ()> {
+    fn check_nonce_and_update(&mut self, nonce: &FleetNonce) -> Result<(), Error> {
         let cur_tick = self.current_tick();
         let min_tick = cur_tick.wrapping_sub(self.tick_window);
 
@@ -255,7 +234,7 @@ where
             self.last_rx_tick = nonce.tick;
             Ok(())
         } else {
-            Err(())
+            Err(Error::InvalidNonce)
         }
     }
 }

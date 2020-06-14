@@ -1,4 +1,4 @@
-use crate::hal::gpio::{OpenDrain, Output, Pin};
+use crate::hal::gpio::{OpenDrain, Output, Pin, Level, OpenDrainConfig};
 use crate::timer::TICKS_PER_SECOND;
 use embedded_hal::digital::v2::OutputPin;
 use embedded_hal::digital::v2::StatefulOutputPin;
@@ -35,15 +35,15 @@ impl<T> Relays<T>
 where
     T: RollingTimer,
 {
-    pub fn from_pins(pins: [Pin<Output<OpenDrain>>; 4], timer: T) -> Self {
+    pub fn from_pins<Pm>(pins: [Pin<Pm>; 4], timer: T) -> Self {
         let now = timer.get_current_tick();
-        let [mut pin_0, mut pin_1, mut pin_2, mut pin_3] = pins;
+        let [pin_0, pin_1, pin_2, pin_3] = pins;
 
         // Make sure all pins are off at startup
-        pin_0.set_high().ok();
-        pin_1.set_high().ok();
-        pin_2.set_high().ok();
-        pin_3.set_high().ok();
+        let pin_0 = pin_0.into_open_drain_output(OpenDrainConfig::HighDrive0Disconnect1, Level::High);
+        let pin_1 = pin_1.into_open_drain_output(OpenDrainConfig::HighDrive0Disconnect1, Level::High);
+        let pin_2 = pin_2.into_open_drain_output(OpenDrainConfig::HighDrive0Disconnect1, Level::High);
+        let pin_3 = pin_3.into_open_drain_output(OpenDrainConfig::HighDrive0Disconnect1, Level::High);
 
         Self {
             relays: [
@@ -59,11 +59,11 @@ where
 
     pub fn set_relay(&mut self, relay: RelayIdx, state: RelayState) -> Result<(), ()> {
         let relay = match relay {
-            RelayIdx::Relay0 => &mut self.relays[0],
-            RelayIdx::Relay1 => &mut self.relays[1],
-            RelayIdx::Relay2 => &mut self.relays[2],
-            RelayIdx::Relay3 => &mut self.relays[3],
-        };
+            RelayIdx::Relay0 => self.relays.get_mut(0),
+            RelayIdx::Relay1 => self.relays.get_mut(1),
+            RelayIdx::Relay2 => self.relays.get_mut(2),
+            RelayIdx::Relay3 => self.relays.get_mut(3),
+        }.ok_or(())?;
 
         let now = self.timer.get_current_tick();
         let delta = now.wrapping_sub(relay.last_toggle_tick);
@@ -76,11 +76,11 @@ where
 
         match state {
             RelayState::On if !is_low => {
-                relay.gpio.set_low().ok();
+                relay.gpio.set_low().map_err(drop)?;
                 relay.last_toggle_tick = now;
             }
             RelayState::Off if is_low => {
-                relay.gpio.set_high().ok();
+                relay.gpio.set_high().map_err(drop)?;
                 relay.last_toggle_tick = now;
             }
             _ => {}
@@ -97,7 +97,7 @@ where
 
         if delta >= COMMS_TIMEOUT {
             self.relays.iter_mut().for_each(|r| {
-                r.gpio.set_low().ok();
+                r.gpio.set_high().ok();
                 r.last_toggle_tick = now;
             });
         }

@@ -1,3 +1,4 @@
+use esb::payload::PayloadR;
 use esb::{ArrayLength, EsbApp, EsbHeader};
 
 use core::marker::PhantomData;
@@ -66,14 +67,10 @@ where
         // serialize directly to buffer
         let used = to_slice(msg, &mut grant)?.len();
 
+        let nonce_bytes = FleetNonce { tick: self.last_rx_tick, msg_count: self.last_rx_count }.to_bytes();
+
         // Create nonce
-        let nonce = GenericArray::clone_from_slice(
-            &FleetNonce {
-                tick: self.last_rx_tick,
-                msg_count: self.last_rx_count,
-            }
-            .to_bytes(),
-        );
+        let ga_nonce = GenericArray::from_slice(&nonce_bytes);
 
         let mut buf = LilBuf {
             buf: &mut grant,
@@ -81,10 +78,10 @@ where
         };
 
         // Encrypt
-        self.crypt.encrypt_in_place(&nonce, b"", &mut buf)?;
+        self.crypt.encrypt_in_place(&ga_nonce, b"", &mut buf)?;
 
         // Add nonce to payload
-        buf.extend_from_slice(&nonce)?;
+        buf.extend_from_slice(&ga_nonce)?;
 
         // Extract the bytes used of the LilBuf
         let used = buf.used.into();
@@ -100,62 +97,42 @@ where
             // No packet ready
             None => return Ok(None),
 
-            // We didn't even get enough bytes for the crypto
-            // header (and a 1 byte payload). Release packet and
-            // return error
-            Some(pkt) if pkt.payload_len() <= MIN_CRYPT_SIZE => {
-                pkt.release();
-                return Err(Error::PacketTooSmol);
-            }
-
             // We got a potentially good one!
             Some(pkt) => pkt,
         };
 
-        let len = packet.payload_len();
-        let (payload, nonce) = packet.split_at_mut(len - NONCE_SIZE);
-        let nonce = match FleetNonce::try_from_bytes(nonce) {
-            Ok(n) => n,
-            Err(_e) => {
-                packet.release();
-                return Err(Error::BadNonce);
-            }
-        };
+        let result = self.process_rx_frame(&mut packet);
+        packet.release();
+        result.map(Option::Some)
+    }
+
+    fn process_rx_frame(&mut self, frame: &mut PayloadR<IncomingLen>) -> Result<RxMessage<IncomingTy>, Error> {
+        // We didn't even get enough bytes for the crypto
+        // header (and a 1 byte payload). Release packet and
+        // return error
+        if frame.payload_len() <= MIN_CRYPT_SIZE {
+            return Err(Error::PacketTooSmol);
+        }
+
+        let len = frame.payload_len();
+        let (payload, nonce_bytes) = frame.split_at_mut(len - NONCE_SIZE);
+        let fleet_nonce = FleetNonce::try_from_bytes(nonce_bytes)?;
 
         // TODO(AJM): PRX should probably do some kind of nonce validation. For now,
         // just update the tracking variables
-        self.last_rx_tick = nonce.tick;
-        self.last_rx_count = nonce.msg_count;
+        self.last_rx_tick = fleet_nonce.tick;
+        self.last_rx_count = fleet_nonce.msg_count;
 
-        let nonce = GenericArray::clone_from_slice(&nonce.to_bytes());
+        let ga_nonce = GenericArray::from_slice(nonce_bytes);
         let mut buf = LilBuf {
             used: payload.len() as u8,
             buf: payload,
         };
 
-        match self.crypt.decrypt_in_place(&nonce, b"", &mut buf) {
-            Ok(()) => {}
-            Err(e) => {
-                packet.release();
-                return Err(e.into());
-            }
-        }
+        self.crypt.decrypt_in_place(&ga_nonce, b"", &mut buf)?;
 
-        let result = match from_bytes(buf.as_ref()) {
-            Ok(pkt) => {
-                let resp = RxMessage {
-                    msg: pkt,
-                    meta: MessageMetadata {
-                        pipe: packet.pipe(),
-                    },
-                };
-                Ok(Some(resp))
-            }
-            Err(e) => Err(e.into()),
-        };
-
-        packet.release();
-
-        result
+        from_bytes(buf.as_ref())
+            .map(|pkt| RxMessage { msg: pkt, meta: MessageMetadata { pipe: frame.pipe() }})
+            .map_err(|e| e.into())
     }
 }

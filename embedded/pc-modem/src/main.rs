@@ -67,10 +67,11 @@ use hal::{
 };
 
 use fleet_esb::prx::FleetRadioPrx;
-
 use fleet_icd::radio::{DeviceToHost, HostToDevice, PlantLightHostMessage, RelayIdx, RelayState};
-
 use fleet_keys::keys::KEY;
+
+// Panic provider crate
+use panic_persist as _;
 
 #[rtfm::app(device = crate::hal::pac, peripherals = true)]
 const APP: () = {
@@ -198,15 +199,3 @@ const APP: () = {
         ctx.resources.esb_timer.timer_interrupt();
     }
 };
-
-// #[inline(never)]
-// #[panic_handler]
-// fn panic(info: &PanicInfo) -> ! {
-//     rprintln!("{}", info);
-//     loop {
-//         compiler_fence(Ordering::SeqCst);
-//     }
-// }
-
-// Panic provider crate
-use panic_persist;

@@ -11,4 +11,3 @@ edition = "2018"
 [features]
 demo = []
 prod = []
-default = ["demo"]

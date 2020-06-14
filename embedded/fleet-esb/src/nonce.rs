@@ -1,4 +1,4 @@
-use crate::{MAGIC_WORD, NONCE_SIZE};
+use crate::{MAGIC_WORD, NONCE_SIZE, Error};
 
 pub struct FleetNonce {
     pub(crate) tick: u32,
@@ -14,13 +14,13 @@ impl FleetNonce {
         nonce
     }
 
-    pub fn try_from_bytes(buf: &[u8]) -> Result<Self, ()> {
+    pub fn try_from_bytes(buf: &[u8]) -> Result<Self, Error> {
         if buf.len() != NONCE_SIZE {
-            return Err(());
+            return Err(Error::BadNonce);
         }
 
-        if &buf[8..12] != &MAGIC_WORD.to_le_bytes() {
-            return Err(());
+        if buf[8..12] != MAGIC_WORD.to_le_bytes() {
+            return Err(Error::BadNonce);
         }
 
         let mut m_ct_buf = [0u8; 4];

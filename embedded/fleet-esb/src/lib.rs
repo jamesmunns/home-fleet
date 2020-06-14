@@ -113,12 +113,12 @@ impl<'a> Buffer for LilBuf<'a> {
     }
 }
 
-//                            vvvvv    - magic
-pub const MAGIC_WORD: u32 = 0xF1337001;
-//                                 ^^^ - protocol version
-//                                 ^   - major
-//                                  ^  - minor
-//                                   ^ - trivial
+//                            vv vv v    - magic
+pub const MAGIC_WORD: u32 = 0xF1_33_70_01;
+//                                   ^ ^^ - protocol version
+//                                   ^    - major
+//                                     ^  - minor
+//                                      ^ - trivial
 
 pub const NONCE_SIZE: usize = 12;
 pub const CRYPT_SIZE: usize = 16;
