@@ -2,8 +2,10 @@
 members = [
     "plant-light",
     "pc-modem",
+    "test-modem",
     "fleet-esb",
     "fleet-keys",
+    "fleet-uarte",
 ]
 
 [profile.dev]

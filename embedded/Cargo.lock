@@ -12,12 +12,6 @@ dependencies = [
 
 [[package]]
 name = "aligned"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d39da9b88ae1a81c03c9c082b8db83f1d0e93914126041962af61034ab44c4a5"
-
-[[package]]
-name = "aligned"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "eb1ce8b3382016136ab1d31a1b5ce807144f8b7eb2d5f16b2108f0f07edceb94"
@@ -34,17 +28,6 @@ dependencies = [
  "generic-array 0.12.3",
  "generic-array 0.13.2",
  "stable_deref_trait",
-]
-
-[[package]]
-name = "asm-delay"
-version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0e0c8eec73de29ae94b2aff405a272304bc286204ddb1cdf20d7e2249078ae20"
-dependencies = [
- "bitrate",
- "cortex-m 0.5.10",
- "embedded-hal",
 ]
 
 [[package]]
@@ -68,15 +51,9 @@ version = "0.4.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "27d38cf39fda7785da8cf182cff9b2195f8b85b0d2d578a4c5d7f322b2158e82"
 dependencies = [
- "cortex-m 0.6.2",
+ "cortex-m",
  "generic-array 0.13.2",
 ]
-
-[[package]]
-name = "bitrate"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c147d86912d04bef727828fda769a76ca81629a46d8ba311a8d58a26aa91473d"
 
 [[package]]
 name = "byteorder"
@@ -118,23 +95,11 @@ dependencies = [
 
 [[package]]
 name = "cortex-m"
-version = "0.5.10"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3c0b159a1e8306949579de3698c841dba58058197b65c60807194e4fa1e7a554"
-dependencies = [
- "aligned 0.2.0",
- "bare-metal",
- "cortex-m 0.6.2",
- "volatile-register",
-]
-
-[[package]]
-name = "cortex-m"
 version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2954942fbbdd49996704e6f048ce57567c3e1a4e2dc59b41ae9fde06a01fc763"
 dependencies = [
- "aligned 0.3.2",
+ "aligned",
  "bare-metal",
  "volatile-register",
 ]
@@ -166,7 +131,7 @@ version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "eaf0b9fd3f042cb3793d15daf3cea201b2f25c99b0b5b936a551bb6909c3ae5b"
 dependencies = [
- "cortex-m 0.6.2",
+ "cortex-m",
  "cortex-m-rt",
  "cortex-m-rtfm-macros",
  "heapless",
@@ -187,9 +152,9 @@ dependencies = [
 
 [[package]]
 name = "embedded-hal"
-version = "0.2.3"
+version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ee4908a155094da7723c2d60d617b820061e3b4efcc3d9e293d206a5a76c170b"
+checksum = "fa998ce59ec9765d15216393af37a58961ddcefb14c753b4816ba2191d865fcb"
 dependencies = [
  "nb",
  "void",
@@ -232,6 +197,18 @@ dependencies = [
 [[package]]
 name = "fleet-keys"
 version = "0.1.0"
+
+[[package]]
+name = "fleet-uarte"
+version = "0.1.0"
+dependencies = [
+ "bbqueue",
+ "embedded-hal",
+ "nrf52810-hal",
+ "nrf52832-hal",
+ "nrf52840-hal",
+ "rtt-target",
+]
 
 [[package]]
 name = "fpa"
@@ -305,7 +282,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cc36b48f37fdeeb88821733f8049bfee490fa76376746760c83bc4faa850320b"
 dependencies = [
  "cast",
- "cortex-m 0.6.2",
+ "cortex-m",
  "embedded-hal",
  "fpa",
  "nb",
@@ -324,7 +301,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "28f904965c2bedf2a9a3558697f4fde725ce7771f7f60fb0e90ca54b8a03f80a"
 dependencies = [
  "bare-metal",
- "cortex-m 0.6.2",
+ "cortex-m",
  "cortex-m-rt",
  "vcell",
 ]
@@ -336,7 +313,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dde690abc98d6edd793c12373317af363625418d940d0f3c274a035011c447af"
 dependencies = [
  "cast",
- "cortex-m 0.6.2",
+ "cortex-m",
  "embedded-hal",
  "nb",
  "nrf-hal-common",
@@ -351,7 +328,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "47203105bd7e0b5d5a5a8ace974cfb58a2968825981e3e945e673399bb7170ae"
 dependencies = [
  "cast",
- "cortex-m 0.6.2",
+ "cortex-m",
  "embedded-hal",
  "nb",
  "nrf-hal-common",
@@ -366,7 +343,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "136a10e0a338c3b46370a37c7986d78880714abae701d6a9a5fbdfde9a6397ea"
 dependencies = [
  "bare-metal",
- "cortex-m 0.6.2",
+ "cortex-m",
  "cortex-m-rt",
  "vcell",
 ]
@@ -378,7 +355,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e9656eab0c535fb4429876525fb5db1604bceeed80cc91a7b91d7b683db4a3a0"
 dependencies = [
  "cast",
- "cortex-m 0.6.2",
+ "cortex-m",
  "embedded-hal",
  "nb",
  "nrf-hal-common",
@@ -393,7 +370,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72920484274fae0792a40345049da2723612465c7202561b6a17ad3c127259db"
 dependencies = [
  "bare-metal",
- "cortex-m 0.6.2",
+ "cortex-m",
  "cortex-m-rt",
  "vcell",
 ]
@@ -405,7 +382,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6aab4c41abc02fcefbdbedfa773d213302bc00c57a0b2237c6b5bf0456da10d3"
 dependencies = [
  "cast",
- "cortex-m 0.6.2",
+ "cortex-m",
  "embedded-hal",
  "nb",
  "nrf-hal-common",
@@ -420,7 +397,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e1b780a5afd2621774652f28c82837f6aa6d19cf0ad71c734fc1fe53298a2d73"
 dependencies = [
  "bare-metal",
- "cortex-m 0.6.2",
+ "cortex-m",
  "cortex-m-rt",
  "vcell",
 ]
@@ -431,7 +408,7 @@ version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dd2e692a5954e3eb0c16f5dbaa75c4332a78d85851521f138c04ad95d6f5ee42"
 dependencies = [
- "cortex-m 0.6.2",
+ "cortex-m",
 ]
 
 [[package]]
@@ -439,7 +416,7 @@ name = "pc-modem"
 version = "0.0.1"
 dependencies = [
  "bbqueue",
- "cortex-m 0.6.2",
+ "cortex-m",
  "cortex-m-rt",
  "cortex-m-rtfm",
  "embedded-hal",
@@ -459,9 +436,8 @@ dependencies = [
 name = "plant-light"
 version = "0.0.1"
 dependencies = [
- "asm-delay",
  "bbqueue",
- "cortex-m 0.6.2",
+ "cortex-m",
  "cortex-m-rt",
  "cortex-m-rtfm",
  "embedded-hal",
@@ -556,7 +532,7 @@ version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "58b1f36984bbcf227044b3b7af1de14a6ebe51b9d21cd856a3d5ba41c70ec191"
 dependencies = [
- "cortex-m 0.6.2",
+ "cortex-m",
  "ufmt-write",
  "vcell",
 ]
@@ -635,6 +611,28 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-xid",
+]
+
+[[package]]
+name = "test-modem"
+version = "0.0.1"
+dependencies = [
+ "bbqueue",
+ "cortex-m",
+ "cortex-m-rt",
+ "cortex-m-rtfm",
+ "embedded-hal",
+ "esb",
+ "fleet-esb",
+ "fleet-icd",
+ "fleet-keys",
+ "fleet-uarte",
+ "nrf51-hal",
+ "nrf52810-hal",
+ "nrf52832-hal",
+ "nrf52840-hal",
+ "panic-persist",
+ "rtt-target",
 ]
 
 [[package]]

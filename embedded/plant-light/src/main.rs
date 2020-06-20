@@ -60,6 +60,7 @@ const APP: () = {
         clocks.start_lfclk();
 
         let p0 = hal::gpio::p0::Parts::new(ctx.device.P0);
+        let p1 = hal::gpio::p1::Parts::new(ctx.device.P1);
 
         static BUFFER: EsbBuffer<U2048, U2048> = EsbBuffer {
             app_to_radio_buf: BBBuffer(ConstBBBuffer::new()),
@@ -103,25 +104,12 @@ const APP: () = {
         rtc.get_event_triggered(RtcInterrupt::Tick, true);
         let rtc = rtc.enable_counter();
 
-        // Setup Relay GPIOs
-        //
-        // DWM1001 LEDS:
-        // * 09 - GPIO_30, p10, P0.30
-        // * 12 - GPIO_14, p07, P0.14
-        // * 11 - GPIO_22, p08, P0.22
-        // * 10 - GPIO_31, p09, P0.31
-        //
-        // DWM1001 Header Pins:
-        // * SDA_RPI:   P0.15
-        // * SCL_RPI:   P0.08
-        // * SPI1_MISO: P0.07
-        // * SPI1_CLK:  P0.04
         let relays = Relays::from_pins(
             [
-                p0.p0_15.degrade(),
-                p0.p0_08.degrade(),
-                p0.p0_07.degrade(),
-                p0.p0_04.degrade(),
+                p1.p1_10.degrade(),
+                p1.p1_13.degrade(),
+                p1.p1_15.degrade(),
+                p0.p0_02.degrade(),
             ],
             RollingRtcTimer::new(),
         );
