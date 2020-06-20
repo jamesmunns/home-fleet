@@ -1,7 +1,11 @@
-use crate::hal::pac::{Interrupt, NVIC, UARTE0};
-use crate::hal::timer::Instance as TimerInstance;
-use crate::hal::uarte::Instance as UarteInstance;
-use crate::hal::uarte::{Baudrate, Parity, Pins};
+use crate::hal::{
+    pac::{Interrupt, NVIC, UARTE0},
+    timer::Instance as TimerInstance,
+    uarte:: {
+        Instance as UarteInstance, Baudrate, Parity, Pins
+    },
+    target_constants::EASY_DMA_SIZE,
+};
 use bbqueue::{ArrayLength, Consumer, GrantR, GrantW, Producer};
 use core::sync::atomic::{compiler_fence, AtomicBool, Ordering::SeqCst};
 use embedded_hal::digital::v2::OutputPin;
@@ -48,9 +52,8 @@ where
     pub(crate) rx_grant: Option<GrantW<'static, IncomingLen>>,
     pub(crate) tx_grant: Option<GrantR<'static, OutgoingLen>>,
     pub(crate) uarte: UARTE0,
+    pub(crate) block_size: usize,
 }
-
-use rtt_target::rprintln;
 
 impl<OutgoingLen, IncomingLen> UarteIrq<OutgoingLen, IncomingLen>
 where
@@ -59,57 +62,106 @@ where
 {
     pub fn init(&mut self, pins: Pins, parity: Parity, baudrate: Baudrate) {
         uarte_setup(&self.uarte, pins, parity, baudrate);
-        if let Ok(mut gr) = self.incoming_prod.grant_exact(32) {
+        if let Ok(mut gr) = self.incoming_prod.grant_exact(self.block_size) {
             uarte_start_read(&self.uarte, &mut gr).unwrap();
             self.rx_grant = Some(gr);
         }
     }
 
-    pub fn interrupt(&mut self) -> usize {
+    // fn foo() {
+    //     // Wait for transmission to end
+    //     let mut endtx;
+    //     let mut txstopped;
+    //     loop {
+    //         endtx = uarte.events_endtx.read().bits() != 0;
+    //         txstopped = uarte.events_txstopped.read().bits() != 0;
+    //         if endtx || txstopped {
+    //             break;
+    //         }
+    //     }
+
+    //     // Conservative compiler fence to prevent optimizations that do not
+    //     // take in to account actions by DMA. The fence has been placed here,
+    //     // after all possible DMA actions have completed
+    //     compiler_fence(SeqCst);
+
+    //     if txstopped {
+    //         return Err(());
+    //     }
+
+    //     // Lower power consumption by disabling the transmitter once we're
+    //     // finished
+    //     uarte.tasks_stoptx.write(|w|
+    //         // `1` is a valid value to write to task registers.
+    //         unsafe { w.bits(1) });
+    // }
+
+    pub fn interrupt(&mut self) {
         let endrx = self.uarte.events_endrx.read().bits() != 0;
         let endtx = self.uarte.events_endtx.read().bits() != 0;
         let rxdrdy = self.uarte.events_rxdrdy.read().bits() != 0;
         let error = self.uarte.events_error.read().bits() != 0;
+        let txstopped = self.uarte.events_txstopped.read().bits() != 0;
 
         let timeout = self.timeout_flag.swap(false, SeqCst);
         let errsrc = self.uarte.errorsrc.read().bits();
 
-        // We only flush the connection if:
-        //
-        // * We didn't get a "natural" end of reception (full buffer), AND
-        // * The timer expired, AND
-        // * We have received one or more bytes to the receive buffer
-        if !endrx && timeout && rxdrdy {
-            uarte_cancel_read(&self.uarte);
-        }
-
-        compiler_fence(SeqCst);
-
-        // Get the bytes received. If the rxdrdy flag wasn't set, then we haven't
-        // actually received any bytes, and we can't trust the `amount` field
-        // (it may have a stale value from the last reception)
-        let amt = if rxdrdy {
-            self.uarte.rxd.amount.read().bits() as usize
-        } else {
-            0
-        };
-
-        // If we received data, cycle the grant and get a new one
-        if amt != 0 || self.rx_grant.is_none() {
-            let gr = self.rx_grant.take();
-
-            // If the buffer was full last time, we may not actually have a grant right now
-            if let Some(gr) = gr {
-                gr.commit(amt);
+        // RX section
+        if endrx || timeout || self.rx_grant.is_none() {
+            // We only flush the connection if:
+            //
+            // * We didn't get a "natural" end of reception (full buffer), AND
+            // * The timer expired, AND
+            // * We have received one or more bytes to the receive buffer
+            if !endrx && timeout && rxdrdy {
+                uarte_cancel_read(&self.uarte);
             }
 
-            // Attempt to get the next grant. If we don't get one now, no worries,
-            // we'll try again on the next timeout
-            if let Ok(mut gr) = self.incoming_prod.grant_exact(32) {
-                uarte_start_read(&self.uarte, &mut gr).unwrap();
-                self.rx_grant = Some(gr);
+            compiler_fence(SeqCst);
+
+            // Get the bytes received. If the rxdrdy flag wasn't set, then we haven't
+            // actually received any bytes, and we can't trust the `amount` field
+            // (it may have a stale value from the last reception)
+            let amt = if rxdrdy {
+                self.uarte.rxd.amount.read().bits() as usize
+            } else {
+                0
+            };
+
+            // If we received data, cycle the grant and get a new one
+            if amt != 0 || self.rx_grant.is_none() {
+                let gr = self.rx_grant.take();
+
+                // If the buffer was full last time, we may not actually have a grant right now
+                if let Some(gr) = gr {
+                    gr.commit(amt);
+                }
+
+                // Attempt to get the next grant. If we don't get one now, no worries,
+                // we'll try again on the next timeout
+                if let Ok(mut gr) = self.incoming_prod.grant_exact(self.block_size) {
+                    uarte_start_read(&self.uarte, &mut gr).unwrap();
+                    self.rx_grant = Some(gr);
+                }
             }
         }
+
+        // TX Section
+        if endtx || self.tx_grant.is_none() {
+            if endtx {
+                if let Some(gr) = self.tx_grant.take() {
+                    let len = gr.len();
+                    gr.release(len.min(EASY_DMA_SIZE));
+                }
+            }
+
+            if let Ok(gr) = self.outgoing_cons.read() {
+                let len = gr.len();
+                uarte_start_write(&self.uarte, &gr[..len.min(EASY_DMA_SIZE)]).unwrap();
+                self.tx_grant = Some(gr);
+            }
+        }
+
 
         // Clear events we processed
         if endrx {
@@ -124,13 +176,14 @@ where
         if rxdrdy {
             self.uarte.events_rxdrdy.write(|w| w);
         }
+        if txstopped {
+            self.uarte.events_txstopped.write(|w| w);
+        }
 
         // Clear any errors
         if errsrc != 0 {
             self.uarte.errorsrc.write(|w| unsafe { w.bits(errsrc) });
         }
-
-        amt
     }
 }
 
@@ -260,4 +313,44 @@ fn uarte_setup<T: UarteInstance>(uarte: &T, mut pins: Pins, parity: Parity, baud
         w.error().set_bit();
         w
     });
+}
+
+fn uarte_start_write(uarte: &UARTE0, tx_buffer: &[u8]) -> Result<(), ()> {
+    if tx_buffer.len() > EASY_DMA_SIZE {
+        return Err(());
+    }
+
+    // Conservative compiler fence to prevent optimizations that do not
+    // take in to account actions by DMA. The fence has been placed here,
+    // before any DMA action has started
+    compiler_fence(SeqCst);
+
+    // Reset the events.
+    uarte.events_endtx.reset();
+    uarte.events_txstopped.reset();
+
+    // Set up the DMA write
+    uarte.txd.ptr.write(|w|
+        // We're giving the register a pointer to the stack. Since we're
+        // waiting for the UARTE transaction to end before this stack pointer
+        // becomes invalid, there's nothing wrong here.
+        //
+        // The PTR field is a full 32 bits wide and accepts the full range
+        // of values.
+        unsafe { w.ptr().bits(tx_buffer.as_ptr() as u32) });
+    uarte.txd.maxcnt.write(|w|
+        // We're giving it the length of the buffer, so no danger of
+        // accessing invalid memory. We have verified that the length of the
+        // buffer fits in an `u8`, so the cast to `u8` is also fine.
+        //
+        // The MAXCNT field is 8 bits wide and accepts the full range of
+        // values.
+        unsafe { w.maxcnt().bits(tx_buffer.len() as _) });
+
+    // Start UARTE Transmit transaction
+    uarte.tasks_starttx.write(|w|
+        // `1` is a valid value to write to task registers.
+        unsafe { w.bits(1) });
+
+    Ok(())
 }

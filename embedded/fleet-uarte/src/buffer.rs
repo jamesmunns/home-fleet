@@ -3,13 +3,12 @@ use bbqueue::{ArrayLength, BBBuffer};
 
 use crate::hal::pac::UARTE0;
 use crate::hal::timer::Instance as TimerInstance;
-use crate::hal::uarte::{Baudrate, Instance as UarteInstance, Parity, Pins};
+use crate::hal::uarte::{Baudrate, Parity, Pins};
 use crate::{
     app::UarteApp,
     irq::{UarteIrq, UarteTimer},
 };
 use core::sync::atomic::AtomicBool;
-use embedded_hal::digital::v2::OutputPin;
 
 use crate::hal::pac::{Interrupt, TIMER0, TIMER1, TIMER2};
 #[cfg(any(feature = "52832", feature = "52840"))]
@@ -51,6 +50,7 @@ where
         timer: Timer,
         ppi_ch: &CH,
         uarte: UARTE0,
+        rx_block_size: usize
     ) -> Result<UarteParts<OutgoingLen, IncomingLen, Timer>, Error> {
         let (txd_prod, txd_cons) = self.txd_buf.try_split().map_err(|_| Error::Todo)?;
         let (rxd_prod, rxd_cons) = self.rxd_buf.try_split().map_err(|_| Error::Todo)?;
@@ -72,10 +72,7 @@ where
 
         // YOLO
         let clear_task_addr = unsafe { &(&*hw_timer).tasks_clear as *const _ as u32 };
-
-        let hw_uarte = crate::hal::pac::UARTE0::ptr(); // todo
-
-        let rxdrdy_evt_addr = unsafe { &uarte.events_rxdrdy as *const _ as u32 };
+        let rxdrdy_evt_addr = &uarte.events_rxdrdy as *const _ as u32;
 
         ppi_ch.eep.write(|w| unsafe { w.bits(rxdrdy_evt_addr) });
         ppi_ch.tep.write(|w| unsafe { w.bits(clear_task_addr) });
@@ -92,6 +89,7 @@ where
             rx_grant: None,
             tx_grant: None,
             uarte,
+            block_size: rx_block_size,
         };
 
         utim.init(1_000_000);

@@ -99,19 +99,22 @@ const APP: () = {
 
         let ppi_ch = &ctx.device.PPI.ch[0];
 
+        let uarte_pins = hal::uarte::Pins {
+            rxd,
+            txd,
+            cts: None,
+            rts: None,
+        };
+
         let ue = UBUF
             .try_split(
-                hal::uarte::Pins {
-                    rxd,
-                    txd,
-                    cts: None,
-                    rts: None,
-                },
+                uarte_pins,
                 hal::uarte::Parity::EXCLUDED,
-                hal::uarte::Baudrate::BAUD115200,
+                hal::uarte::Baudrate::BAUD230400,
                 ctx.device.TIMER2,
                 ppi_ch,
                 uart,
+                32,
             )
             .unwrap();
 
@@ -132,6 +135,7 @@ const APP: () = {
     fn idle(ctx: idle::Context) -> ! {
         let esb_app = ctx.resources.esb_app;
         let timer = ctx.resources.timer;
+        let uarte_app = ctx.resources.uarte_app;
 
         let on = true;
 
@@ -142,10 +146,14 @@ const APP: () = {
         timer.start(5_000_000u32);
 
         loop {
-            if let Ok(gr) = ctx.resources.uarte_app.incoming_cons.read() {
-                let len = gr.len();
+            if let Ok(rgr) = uarte_app.read() {
+                let len = rgr.len();
                 rprintln!("Brr: {}", len);
-                gr.release(len);
+                if let Ok(mut wgr) = uarte_app.write_grant(len) {
+                    wgr.copy_from_slice(&rgr);
+                    wgr.commit(len);
+                }
+                rgr.release(len);
             }
             if timer.wait().is_ok() {
                 rprintln!("Hello from idle!");
@@ -180,9 +188,6 @@ const APP: () = {
     #[task(binds = UARTE0_UART0, resources = [uarte_irq])]
     fn uarte0(ctx: uarte0::Context) {
         // rprintln!("Hello from uarte0!");
-        let x = ctx.resources.uarte_irq.interrupt();
-        if x != 0 {
-            rprintln!("got: {} bytes", x);
-        }
+        ctx.resources.uarte_irq.interrupt();
     }
 };
