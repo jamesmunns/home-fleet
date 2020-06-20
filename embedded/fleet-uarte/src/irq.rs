@@ -73,73 +73,67 @@ where
     pub fn interrupt(&mut self) -> usize {
         let endrx = self.uarte.events_endrx.read().bits() != 0;
         let endtx = self.uarte.events_endtx.read().bits() != 0;
+        let rxdrdy = self.uarte.events_rxdrdy.read().bits() != 0;
         let error = self.uarte.events_error.read().bits() != 0;
 
-        // let cts = self.uarte.events_cts.read().bits() != 0;
-        // let ncts = self.uarte.events_ncts.read().bits() != 0;
-        let rxdrdy = self.uarte.events_rxdrdy.read().bits() != 0;
-        // let rxstarted = self.uarte.events_rxstarted.read().bits() != 0;
+        let timeout = self.timeout_flag.swap(false, SeqCst);
+        let errsrc = self.uarte.errorsrc.read().bits();
 
-        // let rxto = self.uarte.events_rxto.read().bits() != 0;
-        // let txdrdy = self.uarte.events_txdrdy.read().bits() != 0;
-        // let txstarted = self.uarte.events_txstarted.read().bits() != 0;
-        // let txstopped = self.uarte.events_txstopped.read().bits() != 0;
-
-        // rprintln!("->UINT1 {} {} {}", endrx, endtx, error);
-        // rprintln!("->UINT2 {} {} {} {}", cts, ncts, rxdrdy, rxstarted);
-        // rprintln!("->UINT3 {} {} {} {}", rxto, txdrdy, txstarted, txstopped);
-
-        // why?
-        if !endrx && self.timeout_flag.swap(false, SeqCst) && rxdrdy {
-            // rprintln!("-->CANCEL");
+        // We only flush the connection if:
+        //
+        // * We didn't get a "natural" end of reception (full buffer), AND
+        // * The timer expired, AND
+        // * We have received one or more bytes to the receive buffer
+        if !endrx && timeout && rxdrdy {
             uarte_cancel_read(&self.uarte);
-            uarte_finalize_read(&self.uarte);
         }
+
         compiler_fence(SeqCst);
 
+        // Get the bytes received. If the rxdrdy flag wasn't set, then we haven't
+        // actually received any bytes, and we can't trust the `amount` field
+        // (it may have a stale value from the last reception)
         let amt = if rxdrdy {
             self.uarte.rxd.amount.read().bits() as usize
         } else {
             0
         };
 
-        if amt != 0 {
+        // If we received data, cycle the grant and get a new one
+        if amt != 0 || self.rx_grant.is_none() {
             let gr = self.rx_grant.take();
 
+            // If the buffer was full last time, we may not actually have a grant right now
             if let Some(gr) = gr {
-                // rprintln!("-->COMMIT");
                 gr.commit(amt);
             }
 
+            // Attempt to get the next grant. If we don't get one now, no worries,
+            // we'll try again on the next timeout
             if let Ok(mut gr) = self.incoming_prod.grant_exact(32) {
-                // rprintln!("-->START");
                 uarte_start_read(&self.uarte, &mut gr).unwrap();
                 self.rx_grant = Some(gr);
-            } else {
-                // rprintln!("uhhh....")
             }
         }
 
-        compiler_fence(SeqCst);
+        // Clear events we processed
+        if endrx {
+            self.uarte.events_endrx.write(|w| w);
+        }
+        if endtx {
+            self.uarte.events_endtx.write(|w| w);
+        }
+        if error {
+            self.uarte.events_error.write(|w| w);
+        }
+        if rxdrdy {
+            self.uarte.events_rxdrdy.write(|w| w);
+        }
 
-        self.uarte.events_endrx.write(|w| w);
-        self.uarte.events_endtx.write(|w| w);
-        self.uarte.events_error.write(|w| w);
-
-        self.uarte.events_cts.write(|w| w);
-        self.uarte.events_ncts.write(|w| w);
-        self.uarte.events_rxdrdy.write(|w| w);
-        self.uarte.events_rxstarted.write(|w| w);
-
-        self.uarte.events_rxto.write(|w| w);
-        self.uarte.events_txdrdy.write(|w| w);
-        self.uarte.events_txstarted.write(|w| w);
-        self.uarte.events_txstopped.write(|w| w);
-
-        self.uarte.errorsrc.modify(|_r, w| w);
-
-
-        compiler_fence(SeqCst);
+        // Clear any errors
+        if errsrc != 0 {
+            self.uarte.errorsrc.write(|w| unsafe { w.bits(errsrc) });
+        }
 
         amt
     }
@@ -180,30 +174,12 @@ fn uarte_start_read(uarte: &UARTE0, rx_buffer: &mut [u8]) -> Result<(), ()> {
         // range of values.
         unsafe { w.maxcnt().bits(rx_buffer.len() as _) });
 
-    // AJM
-    // uarte.events_rxstarted.write(|w| w);
-
     // Start UARTE Receive transaction
     uarte.tasks_startrx.write(|w|
         // `1` is a valid value to write to task registers.
         unsafe { w.bits(1) });
 
-
-    // AJM
-    // while uarte.events_rxstarted.read().bits() == 0 {}
-
     Ok(())
-}
-
-/// Finalize a UARTE read transaction by clearing the event
-fn uarte_finalize_read(uarte: &UARTE0) {
-    // Reset the event, otherwise it will always read `1` from now on.
-    uarte.events_endrx.write(|w| w);
-
-    // Conservative compiler fence to prevent optimizations that do not
-    // take in to account actions by DMA. The fence has been placed here,
-    // after all possible DMA actions have completed
-    compiler_fence(SeqCst);
 }
 
 /// Stop an unfinished UART read transaction and flush FIFO to DMA buffer
@@ -215,11 +191,6 @@ fn uarte_cancel_read(uarte: &UARTE0) {
 
     // Wait for the reception to have stopped
     while uarte.events_rxto.read().bits() == 0 {}
-    // for _ in 0..100_000 {
-    //     if uarte.events_rxto.read().bits() != 0 {
-    //         break;
-    //     }
-    // }
 
     // Reset the event flag
     uarte.events_rxto.write(|w| w);
@@ -229,11 +200,6 @@ fn uarte_cancel_read(uarte: &UARTE0) {
 
     // Wait for the flush to complete.
     while uarte.events_endrx.read().bits() == 0 {}
-    // for _ in 0..100_000 {
-    //     if uarte.events_endrx.read().bits() != 0 {
-    //         break;
-    //     }
-    // }
 
     // The event flag itself is later reset by `finalize_read`.
 }
@@ -290,8 +256,10 @@ fn uarte_setup<T: UarteInstance>(uarte: &T, mut pins: Pins, parity: Parity, baud
     // Configure frequency
     uarte.baudrate.write(|w| w.baudrate().variant(baudrate));
 
+    // Clear all interrupts
     uarte.intenclr.write(|w| unsafe { w.bits(0xFFFFFFFF) });
 
+    // Enable relevant interrupts
     uarte.intenset.write(|w| {
         w.endrx().set_bit();
         w.endtx().set_bit();
