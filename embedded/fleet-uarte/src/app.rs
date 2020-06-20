@@ -1,4 +1,4 @@
-use bbqueue::{Producer, Consumer, ArrayLength};
+use bbqueue::{ArrayLength, Consumer, Producer};
 
 pub struct UarteApp<OutgoingLen, IncomingLen>
 where
@@ -14,5 +14,4 @@ where
     OutgoingLen: ArrayLength<u8>,
     IncomingLen: ArrayLength<u8>,
 {
-
 }

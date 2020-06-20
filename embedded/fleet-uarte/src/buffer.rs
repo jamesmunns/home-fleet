@@ -1,22 +1,17 @@
-use bbqueue::{ArrayLength, BBBuffer};
 use crate::Error;
+use bbqueue::{ArrayLength, BBBuffer};
 
+use crate::hal::pac::UARTE0;
 use crate::hal::timer::Instance as TimerInstance;
-use crate::hal::uarte::{
-    Instance as UarteInstance,
-    Pins,
-    Parity,
-    Baudrate,
-};
+use crate::hal::uarte::{Baudrate, Instance as UarteInstance, Parity, Pins};
 use crate::{
     app::UarteApp,
     irq::{UarteIrq, UarteTimer},
 };
 use core::sync::atomic::AtomicBool;
-use crate::hal::pac::UARTE0;
 use embedded_hal::digital::v2::OutputPin;
 
-use crate::hal::pac::{TIMER0, TIMER1, TIMER2, Interrupt};
+use crate::hal::pac::{Interrupt, TIMER0, TIMER1, TIMER2};
 #[cfg(any(feature = "52832", feature = "52840"))]
 use crate::hal::pac::{TIMER3, TIMER4};
 
@@ -56,18 +51,9 @@ where
         timer: Timer,
         ppi_ch: &CH,
         uarte: UARTE0,
-    ) -> Result<
-        UarteParts<OutgoingLen, IncomingLen, Timer>,
-        Error,
-    > {
-        let (txd_prod, txd_cons) = self
-            .txd_buf
-            .try_split()
-            .map_err(|_| Error::Todo)?;
-        let (rxd_prod, rxd_cons) = self
-            .rxd_buf
-            .try_split()
-            .map_err(|_| Error::Todo)?;
+    ) -> Result<UarteParts<OutgoingLen, IncomingLen, Timer>, Error> {
+        let (txd_prod, txd_cons) = self.txd_buf.try_split().map_err(|_| Error::Todo)?;
+        let (rxd_prod, rxd_cons) = self.rxd_buf.try_split().map_err(|_| Error::Todo)?;
 
         // hmmm
         let hw_timer = match Timer::INTERRUPT {
@@ -84,17 +70,12 @@ where
             _ => unreachable!(),
         };
 
-
         // YOLO
-        let clear_task_addr = unsafe {
-            &(&*hw_timer).tasks_clear as *const _ as u32
-        };
+        let clear_task_addr = unsafe { &(&*hw_timer).tasks_clear as *const _ as u32 };
 
         let hw_uarte = crate::hal::pac::UARTE0::ptr(); // todo
 
-        let rxdrdy_evt_addr = unsafe {
-            &uarte.events_rxdrdy as *const _ as u32
-        };
+        let rxdrdy_evt_addr = unsafe { &uarte.events_rxdrdy as *const _ as u32 };
 
         ppi_ch.eep.write(|w| unsafe { w.bits(rxdrdy_evt_addr) });
         ppi_ch.tep.write(|w| unsafe { w.bits(clear_task_addr) });

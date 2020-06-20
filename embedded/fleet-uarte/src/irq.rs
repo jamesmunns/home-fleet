@@ -1,18 +1,14 @@
+use crate::hal::pac::{Interrupt, NVIC, UARTE0};
 use crate::hal::timer::Instance as TimerInstance;
 use crate::hal::uarte::Instance as UarteInstance;
-use core::sync::atomic::{AtomicBool, compiler_fence, Ordering::SeqCst};
-use crate::hal::pac::{UARTE0, NVIC, Interrupt};
-use bbqueue::{Producer, Consumer, ArrayLength, GrantR, GrantW};
-use crate::hal::uarte::{
-    Pins,
-    Parity,
-    Baudrate,
-};
+use crate::hal::uarte::{Baudrate, Parity, Pins};
+use bbqueue::{ArrayLength, Consumer, GrantR, GrantW, Producer};
+use core::sync::atomic::{compiler_fence, AtomicBool, Ordering::SeqCst};
 use embedded_hal::digital::v2::OutputPin;
 
 pub struct UarteTimer<Timer>
 where
-    Timer: TimerInstance
+    Timer: TimerInstance,
 {
     pub(crate) timer: Timer,
     pub(crate) timeout_flag: &'static AtomicBool,
@@ -20,7 +16,7 @@ where
 
 impl<Timer> UarteTimer<Timer>
 where
-    Timer: TimerInstance
+    Timer: TimerInstance,
 {
     pub fn init(&mut self, microsecs: u32) {
         self.timer.disable_interrupt();
@@ -40,7 +36,6 @@ where
         NVIC::pend(Interrupt::UARTE0_UART0);
     }
 }
-
 
 pub struct UarteIrq<OutgoingLen, IncomingLen>
 where
@@ -204,7 +199,6 @@ fn uarte_cancel_read(uarte: &UARTE0) {
     // The event flag itself is later reset by `finalize_read`.
 }
 
-
 fn uarte_setup<T: UarteInstance>(uarte: &T, mut pins: Pins, parity: Parity, baudrate: Baudrate) {
     // Select pins
     uarte.psel.rxd.write(|w| {
@@ -266,5 +260,4 @@ fn uarte_setup<T: UarteInstance>(uarte: &T, mut pins: Pins, parity: Parity, baud
         w.error().set_bit();
         w
     });
-
 }

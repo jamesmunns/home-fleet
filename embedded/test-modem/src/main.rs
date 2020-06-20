@@ -1,7 +1,6 @@
 #![no_std]
 #![no_main]
 
-
 // Import the right HAL/PAC crate, depending on the target chip
 #[cfg(feature = "51")]
 use nrf51_hal as hal;
@@ -52,7 +51,7 @@ const APP: () = {
 
         uarte_timer: fleet_uarte::irq::UarteTimer<TIMER2>,
         uarte_irq: fleet_uarte::irq::UarteIrq<U1024, U1024>,
-        uarte_app: fleet_uarte::app::UarteApp<U1024, U1024>
+        uarte_app: fleet_uarte::app::UarteApp<U1024, U1024>,
     }
 
     #[init]
@@ -76,11 +75,12 @@ const APP: () = {
         let esb_irq = esb_irq.into_prx();
         // esb_irq.start_receiving().unwrap();
 
-        static UBUF: fleet_uarte::buffer::UarteBuffer<U1024, U1024> = fleet_uarte::buffer::UarteBuffer {
-            txd_buf: BBBuffer(ConstBBBuffer::new()),
-            rxd_buf: BBBuffer(ConstBBBuffer::new()),
-            timeout_flag: AtomicBool::new(false),
-        };
+        static UBUF: fleet_uarte::buffer::UarteBuffer<U1024, U1024> =
+            fleet_uarte::buffer::UarteBuffer {
+                txd_buf: BBBuffer(ConstBBBuffer::new()),
+                rxd_buf: BBBuffer(ConstBBBuffer::new()),
+                timeout_flag: AtomicBool::new(false),
+            };
 
         rtt_init_print!();
 
@@ -99,23 +99,23 @@ const APP: () = {
 
         let ppi_ch = &ctx.device.PPI.ch[0];
 
-        let ue = UBUF.try_split(
-            hal::uarte::Pins {
-                rxd,
-                txd,
-                cts: None,
-                rts: None,
-            },
-            hal::uarte::Parity::EXCLUDED,
-            hal::uarte::Baudrate::BAUD115200,
-            ctx.device.TIMER2,
-            ppi_ch,
-            uart,
-        ).unwrap();
+        let ue = UBUF
+            .try_split(
+                hal::uarte::Pins {
+                    rxd,
+                    txd,
+                    cts: None,
+                    rts: None,
+                },
+                hal::uarte::Parity::EXCLUDED,
+                hal::uarte::Baudrate::BAUD115200,
+                ctx.device.TIMER2,
+                ppi_ch,
+                uart,
+            )
+            .unwrap();
 
-        ctx.device.PPI.chenset.modify(|_r, w| {
-            w.ch0().set_bit()
-        });
+        ctx.device.PPI.chenset.modify(|_r, w| w.ch0().set_bit());
 
         init::LateResources {
             esb_app,
