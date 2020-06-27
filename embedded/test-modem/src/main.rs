@@ -21,6 +21,7 @@ use {
     hal::{
         gpio::Level,
         pac::{TIMER0, TIMER1, TIMER2},
+        ppi::{Parts, Ppi0},
         Timer,
     },
     rtt_target::{rprintln, rtt_init_print},
@@ -50,7 +51,7 @@ const APP: () = {
         timer: Timer<TIMER1>,
 
         uarte_timer: fleet_uarte::irq::UarteTimer<TIMER2>,
-        uarte_irq: fleet_uarte::irq::UarteIrq<U1024, U1024>,
+        uarte_irq: fleet_uarte::irq::UarteIrq<U1024, U1024, Ppi0>,
         uarte_app: fleet_uarte::app::UarteApp<U1024, U1024>,
     }
 
@@ -97,7 +98,8 @@ const APP: () = {
         let rxd = p0.p0_11.into_floating_input().degrade();
         let txd = p0.p0_05.into_push_pull_output(Level::Low).degrade();
 
-        let ppi_ch = &ctx.device.PPI.ch[0];
+        let ppi_channels = Parts::new(ctx.device.PPI);
+        let channel0 = ppi_channels.ppi0;
 
         let uarte_pins = hal::uarte::Pins {
             rxd,
@@ -112,13 +114,13 @@ const APP: () = {
                 hal::uarte::Parity::EXCLUDED,
                 hal::uarte::Baudrate::BAUD230400,
                 ctx.device.TIMER2,
-                ppi_ch,
+                channel0,
                 uart,
                 32,
             )
             .unwrap();
 
-        ctx.device.PPI.chenset.modify(|_r, w| w.ch0().set_bit());
+        // ctx.device.PPI.chenset.modify(|_r, w| w.ch0().set_bit());
 
         init::LateResources {
             esb_app,

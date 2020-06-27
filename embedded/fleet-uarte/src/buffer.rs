@@ -4,6 +4,7 @@ use bbqueue::{ArrayLength, BBBuffer};
 use crate::hal::pac::UARTE0;
 use crate::hal::timer::Instance as TimerInstance;
 use crate::hal::uarte::{Baudrate, Parity, Pins};
+use crate::hal::ppi::{Ppi, ConfigurablePpi};
 use crate::{
     app::UarteApp,
     irq::{UarteIrq, UarteTimer},
@@ -13,8 +14,6 @@ use core::sync::atomic::AtomicBool;
 use crate::hal::pac::{Interrupt, TIMER0, TIMER1, TIMER2};
 #[cfg(any(feature = "52832", feature = "52840"))]
 use crate::hal::pac::{TIMER3, TIMER4};
-
-use crate::hal::pac::ppi::CH;
 
 pub struct UarteBuffer<OutgoingLen, IncomingLen>
 where
@@ -26,15 +25,16 @@ where
     pub timeout_flag: AtomicBool,
 }
 
-pub struct UarteParts<OutgoingLen, IncomingLen, Timer>
+pub struct UarteParts<OutgoingLen, IncomingLen, Timer, Channel>
 where
     OutgoingLen: ArrayLength<u8>,
     IncomingLen: ArrayLength<u8>,
     Timer: TimerInstance,
+    Channel: Ppi + ConfigurablePpi,
 {
     pub app: UarteApp<OutgoingLen, IncomingLen>,
     pub timer: UarteTimer<Timer>,
-    pub irq: UarteIrq<OutgoingLen, IncomingLen>,
+    pub irq: UarteIrq<OutgoingLen, IncomingLen, Channel>,
 }
 
 impl<OutgoingLen, IncomingLen> UarteBuffer<OutgoingLen, IncomingLen>
@@ -42,16 +42,16 @@ where
     OutgoingLen: ArrayLength<u8>,
     IncomingLen: ArrayLength<u8>,
 {
-    pub fn try_split<Timer: TimerInstance>(
+    pub fn try_split<Timer: TimerInstance, Channel: Ppi + ConfigurablePpi>(
         &'static self,
         pins: Pins,
         parity: Parity,
         baudrate: Baudrate,
         timer: Timer,
-        ppi_ch: &CH,
+        mut ppi_ch: Channel,
         uarte: UARTE0,
         rx_block_size: usize
-    ) -> Result<UarteParts<OutgoingLen, IncomingLen, Timer>, Error> {
+    ) -> Result<UarteParts<OutgoingLen, IncomingLen, Timer, Channel>, Error> {
         let (txd_prod, txd_cons) = self.txd_buf.try_split().map_err(|_| Error::Todo)?;
         let (rxd_prod, rxd_cons) = self.rxd_buf.try_split().map_err(|_| Error::Todo)?;
 
@@ -70,17 +70,13 @@ where
             _ => unreachable!(),
         };
 
-        // YOLO
-        let clear_task_addr = unsafe { &(&*hw_timer).tasks_clear as *const _ as u32 };
-        let rxdrdy_evt_addr = &uarte.events_rxdrdy as *const _ as u32;
-
-        ppi_ch.eep.write(|w| unsafe { w.bits(rxdrdy_evt_addr) });
-        ppi_ch.tep.write(|w| unsafe { w.bits(clear_task_addr) });
-
         let mut utim = UarteTimer {
             timer,
             timeout_flag: &self.timeout_flag,
         };
+
+        ppi_ch.set_task_endpoint(unsafe { &(&*hw_timer).tasks_clear });
+        ppi_ch.set_event_endpoint(&uarte.events_rxdrdy);
 
         let mut uirq = UarteIrq {
             incoming_prod: rxd_prod,
@@ -90,6 +86,7 @@ where
             tx_grant: None,
             uarte,
             block_size: rx_block_size,
+            ppi_ch,
         };
 
         utim.init(1_000_000);

@@ -1,5 +1,6 @@
 use crate::hal::{
     pac::{Interrupt, NVIC, UARTE0},
+    ppi::{Ppi, ConfigurablePpi},
     timer::Instance as TimerInstance,
     uarte:: {
         Instance as UarteInstance, Baudrate, Parity, Pins
@@ -41,10 +42,11 @@ where
     }
 }
 
-pub struct UarteIrq<OutgoingLen, IncomingLen>
+pub struct UarteIrq<OutgoingLen, IncomingLen, Channel>
 where
     OutgoingLen: ArrayLength<u8>,
     IncomingLen: ArrayLength<u8>,
+    Channel: Ppi + ConfigurablePpi,
 {
     pub(crate) outgoing_cons: Consumer<'static, OutgoingLen>,
     pub(crate) incoming_prod: Producer<'static, IncomingLen>,
@@ -53,15 +55,20 @@ where
     pub(crate) tx_grant: Option<GrantR<'static, OutgoingLen>>,
     pub(crate) uarte: UARTE0,
     pub(crate) block_size: usize,
+    pub(crate) ppi_ch: Channel,
 }
 
-impl<OutgoingLen, IncomingLen> UarteIrq<OutgoingLen, IncomingLen>
+impl<OutgoingLen, IncomingLen, Channel> UarteIrq<OutgoingLen, IncomingLen, Channel>
 where
     OutgoingLen: ArrayLength<u8>,
     IncomingLen: ArrayLength<u8>,
+    Channel: Ppi + ConfigurablePpi,
 {
     pub fn init(&mut self, pins: Pins, parity: Parity, baudrate: Baudrate) {
         uarte_setup(&self.uarte, pins, parity, baudrate);
+
+        self.ppi_ch.enable();
+
         if let Ok(mut gr) = self.incoming_prod.grant_exact(self.block_size) {
             uarte_start_read(&self.uarte, &mut gr).unwrap();
             self.rx_grant = Some(gr);

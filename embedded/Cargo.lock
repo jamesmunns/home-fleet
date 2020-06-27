@@ -71,6 +71,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "cfg-if"
+version = "0.1.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4785bdd1c96b2a846b2bd7cc02e86b6b3dbf14e7e53446c4f54c92a361040822"
+
+[[package]]
 name = "chacha20"
 version = "0.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -278,10 +284,10 @@ checksum = "b1411551beb3c11dedfb0a90a0fa256b47d28b9ec2cdff34c25a2fa59e45dbdc"
 [[package]]
 name = "nrf-hal-common"
 version = "0.10.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cc36b48f37fdeeb88821733f8049bfee490fa76376746760c83bc4faa850320b"
+source = "git+https://github.com/jamesmunns/nrf-hal.git?rev=ppi-impl#1898623a1f0a5e1739cbbe02b1085ba9e675321f"
 dependencies = [
  "cast",
+ "cfg-if",
  "cortex-m",
  "embedded-hal",
  "fpa",
