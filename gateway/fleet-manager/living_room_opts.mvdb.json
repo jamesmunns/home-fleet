@@ -1,0 +1,10 @@
+{
+    "shelf_opts": [
+        { "hours_per_day": 10.0 },
+        { "hours_per_day":  8.0 },
+        { "hours_per_day":  6.0 },
+        { "hours_per_day":  0.0 }
+    ],
+    "start_time": "23:33:30",
+    "end_time": "23:35:00"
+}

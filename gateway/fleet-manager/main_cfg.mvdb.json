@@ -1,0 +1,10 @@
+{
+    "plants": [
+        {
+            "pipe": 0,
+            "stat_file": "./living_room_stats.mvdb.json",
+            "opt_file": "./living_room_opts.mvdb.json"
+        }
+    ],
+    "uart": "/dev/ttyACM0"
+}

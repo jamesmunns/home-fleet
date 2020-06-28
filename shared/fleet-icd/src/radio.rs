@@ -1,3 +1,4 @@
+use core::convert::TryFrom;
 use serde::{Serialize, Deserialize};
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
@@ -47,12 +48,36 @@ pub enum RelayState {
     On,
 }
 
+impl From<bool> for RelayState {
+    fn from(other: bool) -> Self {
+        match other {
+            true => RelayState::On,
+            false => RelayState::Off,
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone, Copy)]
 pub enum RelayIdx {
     Relay0,
     Relay1,
     Relay2,
     Relay3,
+}
+
+impl TryFrom<usize> for RelayIdx {
+    // fn try_from(other: &usize) -> Result<
+    type Error = ();
+
+    fn try_from(other: usize) -> core::result::Result<Self, Self::Error> {
+        match other {
+            0 => Ok(RelayIdx::Relay0),
+            1 => Ok(RelayIdx::Relay1),
+            2 => Ok(RelayIdx::Relay2),
+            3 => Ok(RelayIdx::Relay3),
+            _ => Err(())
+        }
+    }
 }
 
 
