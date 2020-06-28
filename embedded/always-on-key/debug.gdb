@@ -3,5 +3,4 @@ set backtrace limit 32
 load
 monitor reset
 break main
-layout split
 continue

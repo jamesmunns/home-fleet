@@ -1,6 +1,40 @@
 #![no_std]
 #![no_main]
 
+// We need to import this crate explicitly so we have a panic handler
+//use panic_semihosting as _;
+
+/// Configuration macro to be called by the user configuration in `config.rs`.
+///
+/// Expands to yet another `apply_config!` macro that's called from `init` and performs some
+/// hardware initialization based on the config values.
+macro_rules! config {
+    (
+        baudrate = $baudrate:ident;
+        tx_pin = $tx_pin:ident;
+        rx_pin = $rx_pin:ident;
+    ) => {
+        macro_rules! apply_config {
+            ( $p0:ident, $uart:ident ) => {{
+                let rxd = $p0.$rx_pin.into_floating_input().degrade();
+                let txd = $p0.$tx_pin.into_push_pull_output(Level::Low).degrade();
+
+                let pins = hal::uarte::Pins {
+                    rxd,
+                    txd,
+                    cts: None,
+                    rts: None,
+                };
+
+                hal::uarte::Uarte::new($uart, pins, Parity::EXCLUDED, Baudrate::$baudrate)
+            }};
+        }
+    };
+}
+
+#[macro_use]
+mod config;
+
 // Import the right HAL/PAC crate, depending on the target chip
 #[cfg(feature = "51")]
 use nrf51_hal as hal;
@@ -20,8 +54,7 @@ use {
     },
     hal::{
         gpio::Level,
-        pac::{TIMER0, TIMER1, TIMER2},
-        ppi::{Parts, Ppi0},
+        pac::{TIMER0, TIMER1},
         Timer,
     },
     rtt_target::{rprintln, rtt_init_print},
@@ -37,8 +70,6 @@ use fleet_esb::prx::FleetRadioPrx;
 use fleet_icd::radio::{DeviceToHost, HostToDevice, PlantLightHostMessage, RelayIdx, RelayState};
 use fleet_keys::keys::KEY;
 
-use fleet_uarte;
-
 // Panic provider crate
 use panic_persist as _;
 
@@ -48,11 +79,8 @@ const APP: () = {
         esb_app: FleetRadioPrx<U8192, U8192, HostToDevice, DeviceToHost>,
         esb_irq: EsbIrq<U8192, U8192, TIMER0, StatePRX>,
         esb_timer: IrqTimer<TIMER0>,
+        serial: Uarte<UARTE0>,
         timer: Timer<TIMER1>,
-
-        uarte_timer: fleet_uarte::irq::UarteTimer<TIMER2>,
-        uarte_irq: fleet_uarte::irq::UarteIrq<U1024, U1024, Ppi0>,
-        uarte_app: fleet_uarte::app::UarteApp<U1024, U1024>,
     }
 
     #[init]
@@ -62,6 +90,8 @@ const APP: () = {
         let p0 = hal::gpio::p0::Parts::new(ctx.device.P0);
 
         let uart = ctx.device.UARTE0;
+        let mut serial = apply_config!(p0, uart);
+        writeln!(serial, "\r\n--- INIT ---").unwrap();
 
         static BUFFER: EsbBuffer<U8192, U8192> = EsbBuffer {
             app_to_radio_buf: BBBuffer(ConstBBBuffer::new()),
@@ -73,102 +103,81 @@ const APP: () = {
         let (esb_app, esb_irq, esb_timer) = BUFFER
             .try_split(ctx.device.TIMER0, ctx.device.RADIO, addresses, config)
             .unwrap();
-        let esb_irq = esb_irq.into_prx();
-        // esb_irq.start_receiving().unwrap();
-
-        static UBUF: fleet_uarte::buffer::UarteBuffer<U1024, U1024> =
-            fleet_uarte::buffer::UarteBuffer {
-                txd_buf: BBBuffer(ConstBBBuffer::new()),
-                rxd_buf: BBBuffer(ConstBBBuffer::new()),
-                timeout_flag: AtomicBool::new(false),
-            };
+        let mut esb_irq = esb_irq.into_prx();
+        esb_irq.start_receiving().unwrap();
 
         rtt_init_print!();
 
         if let Some(msg) = panic_persist::get_panic_message_bytes() {
             // write the error message in reasonable chunks
             for i in msg.chunks(255) {
-                let _ = i;
+                let _ = serial.write(i);
             }
             bkpt();
         }
 
         let esb_app = FleetRadioPrx::new(esb_app, KEY.key());
 
-        let rxd = p0.p0_11.into_floating_input().degrade();
-        let txd = p0.p0_05.into_push_pull_output(Level::Low).degrade();
-
-        let ppi_channels = Parts::new(ctx.device.PPI);
-        let channel0 = ppi_channels.ppi0;
-
-        let uarte_pins = hal::uarte::Pins {
-            rxd,
-            txd,
-            cts: None,
-            rts: None,
-        };
-
-        let ue = UBUF
-            .try_split(
-                uarte_pins,
-                hal::uarte::Parity::EXCLUDED,
-                hal::uarte::Baudrate::BAUD230400,
-                ctx.device.TIMER2,
-                channel0,
-                uart,
-                32,
-            )
-            .unwrap();
-
-// 22:54:28.240 CH0 EEP: 40002108
-// 22:54:28.240 CH0 TEP: 4000A00C
-// 22:54:28.240 CHEN: 00000001
-
-        rprintln!("CH0 EEP: {:08X}", unsafe { core::ptr::read_volatile(0x4001F510 as *const u32) });
-        rprintln!("CH0 TEP: {:08X}", unsafe { core::ptr::read_volatile(0x4001F514 as *const u32) });
-        rprintln!("CHEN: {:08X}", unsafe { core::ptr::read_volatile(0x4001F500 as *const u32) });
-
-
-        // ctx.device.PPI.chenset.modify(|_r, w| w.ch0().set_bit());
-
         init::LateResources {
             esb_app,
             esb_irq,
             esb_timer,
+            serial,
             timer: Timer::new(ctx.device.TIMER1),
-            uarte_timer: ue.timer,
-            uarte_irq: ue.irq,
-            uarte_app: ue.app,
         }
     }
 
-    #[idle(resources = [esb_app, timer, uarte_app])]
+    #[idle(resources = [serial, esb_app, timer])]
     fn idle(ctx: idle::Context) -> ! {
         let esb_app = ctx.resources.esb_app;
         let timer = ctx.resources.timer;
-        let uarte_app = ctx.resources.uarte_app;
 
         let on = true;
 
         use embedded_hal::timer::CountDown;
 
-        rprintln!("Start!");
-
         timer.start(5_000_000u32);
 
         loop {
-            if let Ok(rgr) = uarte_app.read() {
-                let len = rgr.len();
-                rprintln!("Brr: {}", len);
-                if let Ok(mut wgr) = uarte_app.write_grant(len) {
-                    wgr.copy_from_slice(&rgr);
-                    wgr.commit(len);
+            use fleet_esb::RxMessage;
+            use fleet_icd::radio::GeneralDeviceMessage;
+
+            match esb_app.receive() {
+                Ok(None) => {}
+                Ok(Some(RxMessage {
+                    msg: DeviceToHost::General(GeneralDeviceMessage::InitializeSession),
+                    ..
+                })) => {}
+                Ok(Some(m)) => {
+                    rprintln!("Got {:#?}", m);
                 }
-                rgr.release(len);
+                Err(e) => {
+                    rprintln!("RxErr: {:?}", e);
+                }
             }
+
             if timer.wait().is_ok() {
-                rprintln!("Hello from idle!");
-                timer.start(5_000_000u32);
+                timer.start(6_000_000u32);
+                let state = if on { RelayState::On } else { RelayState::Off };
+                // on = !on;
+
+                for relay in [
+                    RelayIdx::Relay0,
+                    RelayIdx::Relay1,
+                    RelayIdx::Relay2,
+                    RelayIdx::Relay3,
+                ]
+                .iter()
+                {
+                    let resp = HostToDevice::PlantLight(PlantLightHostMessage::SetRelay {
+                        relay: *relay,
+                        state,
+                    });
+                    match esb_app.send(&resp, 0) {
+                        Ok(_) => rprintln!("Sent {:?}", resp),
+                        Err(e) => rprintln!("TxErr: {:?}", e),
+                    }
+                }
             }
         }
     }
@@ -188,17 +197,5 @@ const APP: () = {
     #[task(binds = TIMER0, resources = [esb_timer], priority = 3)]
     fn timer0(ctx: timer0::Context) {
         ctx.resources.esb_timer.timer_interrupt();
-    }
-
-    #[task(binds = TIMER2, resources = [uarte_timer])]
-    fn timer2(ctx: timer2::Context) {
-        // rprintln!("Hello from timer2!");
-        ctx.resources.uarte_timer.interrupt();
-    }
-
-    #[task(binds = UARTE0_UART0, resources = [uarte_irq])]
-    fn uarte0(ctx: uarte0::Context) {
-        // rprintln!("Hello from uarte0!");
-        ctx.resources.uarte_irq.interrupt();
     }
 };

@@ -1,5 +1,5 @@
 [package]
-name = "pc-modem"
+name = "always-on-key"
 version = "0.0.1"
 edition = "2018"
 authors = [ "James Munns <james.munns@ferrous-systems.com>"]
@@ -11,12 +11,15 @@ cortex-m-rt = "0.6.12"
 bbqueue = "0.4.6"
 embedded-hal = "0.2.3"
 rtt-target = {version = "0.2.0", features = ["cortex-m"] }
-nrf52832-hal = { version = "0.10", features = ["rt"] }
-postcard = "0.5.0"
+
+nrf52810-hal = { version = "0.10", features = ["rt"], optional = true }
+nrf52832-hal = { version = "0.10", features = ["rt"], optional = true }
+nrf52840-hal = { version = "0.10", features = ["rt"], optional = true }
+nrf51-hal = {version = "0.10.0", features = ["rt"], optional = true}
 
 [dependencies.esb]
 version = "0.1.0"
-features = ["fast-ru", "52832"]
+features = ["fast-ru"]
 
 [dependencies.fleet-icd]
 version = "0.1.0"
@@ -25,10 +28,6 @@ path = "../../shared/fleet-icd"
 [dependencies.fleet-esb]
 version = "0.1.0"
 path = "../fleet-esb"
-
-[dependencies.fleet-uarte]
-version = "0.1.0"
-path = "../fleet-uarte"
 
 [dependencies.fleet-keys]
 version = "0.1.0"
@@ -39,12 +38,16 @@ features = ["prod"]
 [dependencies.panic-persist]
 version = "0.2.1"
 default-features = false
-features = ["utf8"]
 
 # Disable documentation to avoid spurious rustdoc warnings
 [[bin]]
-name = "pc-modem"
+name = "always-on-key"
 doc = false
 test = false
 
 [features]
+51 = ["esb/51", "nrf51-hal"]
+52810 = ["esb/52810", "nrf52810-hal"]
+52832 = ["esb/52832", "nrf52832-hal"]
+52840 = ["esb/52840", "nrf52840-hal"]
+default = ["52832"]

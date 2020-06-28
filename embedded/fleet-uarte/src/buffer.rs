@@ -50,7 +50,8 @@ where
         timer: Timer,
         mut ppi_ch: Channel,
         uarte: UARTE0,
-        rx_block_size: usize
+        rx_block_size: usize,
+        idle_us: u32,
     ) -> Result<UarteParts<OutgoingLen, IncomingLen, Timer, Channel>, Error> {
         let (txd_prod, txd_cons) = self.txd_buf.try_split().map_err(|_| Error::Todo)?;
         let (rxd_prod, rxd_cons) = self.rxd_buf.try_split().map_err(|_| Error::Todo)?;
@@ -89,7 +90,7 @@ where
             ppi_ch,
         };
 
-        utim.init(1_000_000);
+        utim.init(idle_us);
         uirq.init(pins, parity, baudrate);
 
         // ...

@@ -197,6 +197,8 @@ dependencies = [
 name = "fleet-icd"
 version = "0.1.0"
 dependencies = [
+ "generic-array 0.14.2",
+ "postcard",
  "serde",
 ]
 
@@ -245,6 +247,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "generic-array"
+version = "0.14.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ac746a5f3bbfdadd6106868134545e684693d54d9d44f6e9588a7d54af0bf980"
+dependencies = [
+ "typenum",
+ "version_check",
+]
+
+[[package]]
 name = "hash32"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -284,7 +296,7 @@ checksum = "b1411551beb3c11dedfb0a90a0fa256b47d28b9ec2cdff34c25a2fa59e45dbdc"
 [[package]]
 name = "nrf-hal-common"
 version = "0.10.0"
-source = "git+https://github.com/jamesmunns/nrf-hal.git?rev=ppi-impl#1898623a1f0a5e1739cbbe02b1085ba9e675321f"
+source = "git+https://github.com/jamesmunns/nrf-hal.git?rev=ppi-impl#5820c7cf637af6109599e1b9ea32c3ff57fbd0fe"
 dependencies = [
  "cast",
  "cfg-if",
@@ -430,11 +442,10 @@ dependencies = [
  "fleet-esb",
  "fleet-icd",
  "fleet-keys",
- "nrf51-hal",
- "nrf52810-hal",
+ "fleet-uarte",
  "nrf52832-hal",
- "nrf52840-hal",
  "panic-persist",
+ "postcard",
  "rtt-target",
 ]
 
@@ -674,6 +685,12 @@ name = "vcell"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "876e32dcadfe563a4289e994f7cb391197f362b6315dc45e8ba4aa6f564a4b3c"
+
+[[package]]
+name = "version_check"
+version = "0.9.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b5a972e5669d67ba988ce3dc826706fb0a8b01471c088cb0b6110b805cc36aed"
 
 [[package]]
 name = "void"

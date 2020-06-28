@@ -4,6 +4,10 @@ version = "0.1.0"
 authors = ["James Munns <james.munns@ferrous-systems.com>"]
 edition = "2018"
 
+[dependencies]
+generic-array = "0.14.2"
+postcard = "0.5.0"
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies.serde]

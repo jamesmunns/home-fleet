@@ -75,34 +75,6 @@ where
         }
     }
 
-    // fn foo() {
-    //     // Wait for transmission to end
-    //     let mut endtx;
-    //     let mut txstopped;
-    //     loop {
-    //         endtx = uarte.events_endtx.read().bits() != 0;
-    //         txstopped = uarte.events_txstopped.read().bits() != 0;
-    //         if endtx || txstopped {
-    //             break;
-    //         }
-    //     }
-
-    //     // Conservative compiler fence to prevent optimizations that do not
-    //     // take in to account actions by DMA. The fence has been placed here,
-    //     // after all possible DMA actions have completed
-    //     compiler_fence(SeqCst);
-
-    //     if txstopped {
-    //         return Err(());
-    //     }
-
-    //     // Lower power consumption by disabling the transmitter once we're
-    //     // finished
-    //     uarte.tasks_stoptx.write(|w|
-    //         // `1` is a valid value to write to task registers.
-    //         unsafe { w.bits(1) });
-    // }
-
     pub fn interrupt(&mut self) {
         let endrx = self.uarte.events_endrx.read().bits() != 0;
         let endtx = self.uarte.events_endtx.read().bits() != 0;
