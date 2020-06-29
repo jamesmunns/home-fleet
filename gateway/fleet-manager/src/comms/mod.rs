@@ -1,20 +1,11 @@
-use chrono::prelude::*;
-use chrono::{DateTime, Local, TimeZone};
-use postcard::{from_bytes, to_slice_cobs};
-use serde::{Deserialize, Serialize};
 use serialport::prelude::*;
 use std::{
-    collections::{HashMap, VecDeque},
-    fs::{read_to_string, File, OpenOptions},
+    collections::HashMap,
     io::{self, prelude::*},
-    path::Path,
-    sync::mpsc::{Receiver, Sender, TryRecvError},
-    thread::sleep,
-    time::{Duration, Instant},
+    time::Duration,
 };
 use fleet_icd::{
     consts::*, Buffer, FeedResult,
-    radio::{DeviceToHost, HostToDevice, GeneralHostMessage, PlantLightHostMessage, RelayIdx, RelayState},
     modem::{PcToModem, ModemToPc},
 };
 use crate::{ModemCommsHandle, Result};
@@ -32,7 +23,7 @@ impl CommsCtx {
         settings.timeout = Duration::from_millis(50);
         settings.baud_rate = 230_400;
 
-        let mut port = match serialport::open_with_settings(uart, &settings) {
+        let port = match serialport::open_with_settings(uart, &settings) {
             Ok(port) => port,
             Err(e) => {
                 eprintln!("Failed to open \"{}\". Error: {}", uart, e);

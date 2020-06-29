@@ -65,6 +65,17 @@ pub enum RelayIdx {
     Relay3,
 }
 
+impl Into<usize> for RelayIdx {
+    fn into(self) -> usize {
+        match self {
+            RelayIdx::Relay0 => 0,
+            RelayIdx::Relay1 => 1,
+            RelayIdx::Relay2 => 2,
+            RelayIdx::Relay3 => 3,
+        }
+    }
+}
+
 impl TryFrom<usize> for RelayIdx {
     // fn try_from(other: &usize) -> Result<
     type Error = ();

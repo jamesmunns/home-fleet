@@ -12,10 +12,12 @@ use {
         EsbIrq, IrqTimer,
     },
     hal::{
+        clocks::LfOscConfiguration,
         gpio::Level,
-        pac::{TIMER0, TIMER1, TIMER2},
+        pac::{TIMER0, TIMER1, TIMER2, RTC0},
         ppi::{Parts, Ppi0},
         Timer,
+        rtc::{Rtc, Started, RtcInterrupt},
     },
     rtt_target::{rprintln, rtt_init_print},
 };
@@ -26,6 +28,7 @@ use embedded_hal::blocking::delay::DelayMs;
 use fleet_esb::{
     prx::FleetRadioPrx,
     RxMessage,
+    RollingTimer,
 };
 use fleet_icd::{
     radio::{DeviceToHost, HostToDevice, GeneralDeviceMessage},
@@ -37,6 +40,10 @@ use fleet_keys::keys::KEY;
 use fleet_uarte;
 
 use postcard::to_slice_cobs;
+
+mod timer;
+
+use timer::RollingRtcTimer;
 
 // Panic provider crate
 use panic_persist;
@@ -54,11 +61,17 @@ const APP: () = {
         uarte_app: fleet_uarte::app::UarteApp<U1024, U1024>,
 
         cobs_buf: CobsBuffer<U256>,
+
+        rtc: Rtc<RTC0, Started>,
+        rtc_timer: RollingRtcTimer,
     }
 
     #[init]
     fn init(ctx: init::Context) -> init::LateResources {
-        let _clocks = hal::clocks::Clocks::new(ctx.device.CLOCK).enable_ext_hfosc();
+        let clocks = hal::clocks::Clocks::new(ctx.device.CLOCK);
+        let clocks = clocks.enable_ext_hfosc();
+        let clocks = clocks.set_lfclk_src_external(LfOscConfiguration::NoExternalNoBypass);
+        clocks.start_lfclk();
 
         let p0 = hal::gpio::p0::Parts::new(ctx.device.P0);
 
@@ -118,6 +131,13 @@ const APP: () = {
             )
             .unwrap();
 
+        let mut rtc = Rtc::new(ctx.device.RTC0);
+        rtc.set_prescaler(0).ok();
+        rtc.enable_interrupt(RtcInterrupt::Tick, None);
+        rtc.enable_event(RtcInterrupt::Tick);
+        rtc.get_event_triggered(RtcInterrupt::Tick, true);
+        let rtc = rtc.enable_counter();
+
         init::LateResources {
             esb_app,
             esb_irq,
@@ -127,6 +147,8 @@ const APP: () = {
             uarte_irq: ue.irq,
             uarte_app: ue.app,
             cobs_buf: CobsBuffer::new(),
+            rtc,
+            rtc_timer: RollingRtcTimer::new(),
         }
     }
 
@@ -136,13 +158,23 @@ const APP: () = {
         let timer = ctx.resources.timer;
         let uarte_app = ctx.resources.uarte_app;
         let cobs_buf = ctx.resources.cobs_buf;
+        let rtc = RollingRtcTimer::new();
+        let mut last_radio_rx = rtc.get_current_tick();
+        let mut last_uarte_rx = rtc.get_current_tick();
 
         rprintln!("Start!");
 
         loop {
+            let rx = esb_app.receive();
+
+            if let &Ok(Some(_)) = &rx {
+                last_radio_rx = rtc.get_current_tick();
+            }
+
             // Check for radio messages
-            match esb_app.receive() {
+            match rx {
                 Ok(Some(RxMessage { msg: DeviceToHost::General(GeneralDeviceMessage::InitializeSession), .. })) => {
+
                     // Ignore
                 }
                 Ok(Some(msg)) => {
@@ -172,6 +204,7 @@ const APP: () = {
 
             // Check for uart messages
             if let Ok(rgr) = uarte_app.read() {
+                last_uarte_rx = rtc.get_current_tick();
                 let mut buf: &[u8] = &rgr;
                 loop {
                     if buf.is_empty() {
@@ -215,6 +248,19 @@ const APP: () = {
                 let len = rgr.len();
                 rgr.release(len);
             }
+
+            let now = rtc.get_current_tick();
+            let delta_radio = now.wrapping_sub(last_radio_rx);
+            let delta_uarte = now.wrapping_sub(last_uarte_rx);
+
+            if delta_radio >= (5 * timer::TICKS_PER_SECOND) {
+                panic!("Too quiet! - Radio!");
+            }
+
+            if delta_uarte >= (5 * timer::TICKS_PER_SECOND) {
+                panic!("Too quiet! - Uarte!");
+            }
+
             timer.delay_ms(10u8);
         }
 
@@ -230,6 +276,18 @@ const APP: () = {
             }
             Ok(_state) => {} //rprintln!("{:?}", state).unwrap(),
         }
+    }
+
+    /// This event fires every time the hardware RTC ticks
+    ///
+    /// This also feeds the semi-global Rolling RTC Timer
+    #[task(binds = RTC0, resources = [rtc, rtc_timer], priority = 2)]
+    fn rtc_tick(ctx: rtc_tick::Context) {
+        // Check and clear interrupt
+        ctx.resources
+            .rtc
+            .get_event_triggered(RtcInterrupt::Tick, true);
+        ctx.resources.rtc_timer.tick();
     }
 
     #[task(binds = TIMER0, resources = [esb_timer], priority = 3)]

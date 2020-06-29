@@ -104,6 +104,12 @@ impl Plant {
         })
     }
 
+    pub fn force(&self, idx: usize, setting: bool, duration_sec: u64) -> Result<()> {
+        let mut state = self.inner.lock().map_err(|_| String::from("ohhh!1111!!"))?;
+        state.state.get_mut(idx).ok_or_else(|| String::from("errrr"))?.insert(setting, RelayPriority::Override, duration_sec);
+        Ok(())
+    }
+
     pub fn poll(&self) -> Result<()> {
         let options_copy = self.options.access(|t| t.clone())?;
 

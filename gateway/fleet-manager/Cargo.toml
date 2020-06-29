@@ -13,6 +13,7 @@ chrono = { version = "0.4.11", features = ["serde"] }
 serialport = "3.3.0"
 serde = { version = "1.0.114", features = ["derive"] }
 topq = { version = "0.1.0", path = "../../../topq" }
+rocket = "0.4.5"
 
 [dependencies.fleet-icd]
 path = "../../shared/fleet-icd"

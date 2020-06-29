@@ -1,3 +1,5 @@
+#![feature(proc_macro_hygiene, decl_macro)]
+
 use serde::{Serialize, Deserialize};
 use mvdb::Mvdb;
 use std::path::PathBuf;
@@ -6,8 +8,11 @@ use fleet_icd::radio::{HostToDevice, DeviceToHost};
 use std::thread::{spawn, sleep};
 use std::time::Duration;
 
+#[macro_use] extern crate rocket;
+
 mod plant;
 mod comms;
+mod rest;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 struct Options {
@@ -42,6 +47,7 @@ fn main() -> Result<()> {
 
     // TODO: Loop
     let plant = plant::Plant::new(&plants[0].opt_file, &plants[0].stat_file, plant_app)?;
+    let plant2 = plant.clone();
 
     let plant_hdl = spawn(move || {
         while plant.poll().is_ok() {
@@ -55,8 +61,11 @@ fn main() -> Result<()> {
         }
     });
 
+    let rest_hdl = rest::RestCtx::new(plant2);
+
     plant_hdl.join().unwrap();
     modem_hdl.join().unwrap();
+    rest_hdl.join().unwrap();
 
     println!("Hello, world!");
     Ok(())
