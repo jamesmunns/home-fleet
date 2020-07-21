@@ -1,9 +1,10 @@
 use crate::hal::{
+    gpio::Port,
     pac::{Interrupt, NVIC, UARTE0},
     ppi::{Ppi, ConfigurablePpi},
     timer::Instance as TimerInstance,
     uarte:: {
-        Instance as UarteInstance, Baudrate, Parity, Pins
+        Instance as UarteInstance, Baudrate, Parity, Pins,
     },
     target_constants::EASY_DMA_SIZE,
 };
@@ -234,25 +235,25 @@ fn uarte_cancel_read(uarte: &UARTE0) {
 fn uarte_setup<T: UarteInstance>(uarte: &T, mut pins: Pins, parity: Parity, baudrate: Baudrate) {
     // Select pins
     uarte.psel.rxd.write(|w| {
-        let w = unsafe { w.pin().bits(pins.rxd.pin) };
+        let w = unsafe { w.pin().bits(pins.rxd.pin()) };
         #[cfg(feature = "52840")]
-        let w = w.port().bit(pins.rxd.port);
+        let w = w.port().bit(port_bit(&pins.rxd.port()));
         w.connect().connected()
     });
     pins.txd.set_high().unwrap();
     uarte.psel.txd.write(|w| {
-        let w = unsafe { w.pin().bits(pins.txd.pin) };
+        let w = unsafe { w.pin().bits(pins.txd.pin()) };
         #[cfg(feature = "52840")]
-        let w = w.port().bit(pins.txd.port);
+        let w = w.port().bit(port_bit(&pins.txd.port()));
         w.connect().connected()
     });
 
     // Optional pins
     uarte.psel.cts.write(|w| {
         if let Some(ref pin) = pins.cts {
-            let w = unsafe { w.pin().bits(pin.pin) };
+            let w = unsafe { w.pin().bits(pin.pin()) };
             #[cfg(feature = "52840")]
-            let w = w.port().bit(pin.port);
+            let w = w.port().bit(port_bit(&pin.port()));
             w.connect().connected()
         } else {
             w.connect().disconnected()
@@ -261,9 +262,9 @@ fn uarte_setup<T: UarteInstance>(uarte: &T, mut pins: Pins, parity: Parity, baud
 
     uarte.psel.rts.write(|w| {
         if let Some(ref pin) = pins.rts {
-            let w = unsafe { w.pin().bits(pin.pin) };
+            let w = unsafe { w.pin().bits(pin.pin()) };
             #[cfg(feature = "52840")]
-            let w = w.port().bit(pin.port);
+            let w = w.port().bit(port_bit(&pin.port()));
             w.connect().connected()
         } else {
             w.connect().disconnected()
@@ -332,4 +333,13 @@ fn uarte_start_write(uarte: &UARTE0, tx_buffer: &[u8]) -> Result<(), ()> {
         unsafe { w.bits(1) });
 
     Ok(())
+}
+
+#[allow(dead_code)]
+fn port_bit(p: &Port) -> bool {
+    match p {
+        Port::Port0 => false,
+        #[cfg(feature = "52840")]
+        Port::Port1 => true,
+    }
 }

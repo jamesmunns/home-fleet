@@ -95,7 +95,7 @@ impl<'a> Buffer for LilBuf<'a> {
     }
 
     fn truncate(&mut self, len: usize) {
-        debug_assert!(len <= self.used.into(), "over trunc");
+        debug_assert!(len <= usize::from(self.used), "over trunc");
         debug_assert!(len <= 255, "trunc too big");
 
         let new_used = min(len, 255);

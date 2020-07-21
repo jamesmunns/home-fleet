@@ -1,4 +1,4 @@
-use crate::hal::gpio::{OpenDrain, Output, Pin, Level, OpenDrainConfig};
+use crate::hal::gpio::{PushPull, Output, Pin, Level};
 use crate::timer::TICKS_PER_SECOND;
 use embedded_hal::digital::v2::OutputPin;
 use embedded_hal::digital::v2::StatefulOutputPin;
@@ -18,12 +18,12 @@ where
 }
 
 pub struct Relay {
-    gpio: Pin<Output<OpenDrain>>,
+    gpio: Pin<Output<PushPull>>,
     last_toggle_tick: u32,
 }
 
 impl Relay {
-    fn from_pin(pin: Pin<Output<OpenDrain>>, now: u32) -> Self {
+    fn from_pin(pin: Pin<Output<PushPull>>, now: u32) -> Self {
         Self {
             gpio: pin,
             last_toggle_tick: now,
@@ -40,10 +40,10 @@ where
         let [pin_0, pin_1, pin_2, pin_3] = pins;
 
         // Make sure all pins are off at startup
-        let pin_0 = pin_0.into_open_drain_output(OpenDrainConfig::HighDrive0Disconnect1, Level::High);
-        let pin_1 = pin_1.into_open_drain_output(OpenDrainConfig::HighDrive0Disconnect1, Level::High);
-        let pin_2 = pin_2.into_open_drain_output(OpenDrainConfig::HighDrive0Disconnect1, Level::High);
-        let pin_3 = pin_3.into_open_drain_output(OpenDrainConfig::HighDrive0Disconnect1, Level::High);
+        let pin_0 = pin_0.into_push_pull_output(Level::High);
+        let pin_1 = pin_1.into_push_pull_output(Level::High);
+        let pin_2 = pin_2.into_push_pull_output(Level::High);
+        let pin_3 = pin_3.into_push_pull_output(Level::High);
 
         Self {
             relays: [

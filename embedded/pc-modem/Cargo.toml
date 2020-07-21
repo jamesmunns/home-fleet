@@ -11,7 +11,7 @@ cortex-m-rt = "0.6.12"
 bbqueue = "0.4.6"
 embedded-hal = "0.2.3"
 rtt-target = {version = "0.2.0", features = ["cortex-m"] }
-nrf52832-hal = { version = "0.10", features = ["rt"] }
+nrf52832-hal = { version = "0.11", features = ["rt"] }
 postcard = "0.5.0"
 
 [dependencies.esb]

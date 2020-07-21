@@ -1,11 +1,13 @@
 [workspace]
 members = [
+    "always-on-key",
     "plant-light",
     "pc-modem",
     "test-modem",
     "fleet-esb",
     "fleet-keys",
     "fleet-uarte",
+    "scratch",
 ]
 
 [profile.dev]
@@ -20,4 +22,5 @@ codegen-units = 1
 debug-assertions = true
 
 [patch.crates-io]
-nrf-hal-common = { git = "https://github.com/jamesmunns/nrf-hal.git", rev = "ppi-impl" }
+# nrf-hal-common = { git = "https://github.com/nrf-rs/nrf-hal.git", rev = "4ce15251a0afd1dbddfbcd6d6e3225a9b2fc262e" }
+# esb = { path = "../../esb" }

@@ -1053,7 +1053,9 @@ dependencies = [
 
 [[package]]
 name = "topq"
-version = "0.1.0"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bf8585381a0a86be7751f9514a14acdc86cf79b4bcd838ddb7482ede444de3fc"
 dependencies = [
  "generic-array 0.14.2",
 ]

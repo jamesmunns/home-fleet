@@ -8,9 +8,9 @@ edition = "2018"
 
 [dependencies]
 bbqueue = "0.4.6"
-nrf52810-hal = { version = "0.10", features = ["rt"], optional = true }
-nrf52832-hal = { version = "0.10", features = ["rt"], optional = true }
-nrf52840-hal = { version = "0.10", features = ["rt"], optional = true }
+nrf52810-hal = { version = "0.11.0", features = ["rt"], optional = true }
+nrf52832-hal = { version = "0.11.0", features = ["rt"], optional = true }
+nrf52840-hal = { version = "0.11.0", features = ["rt"], optional = true }
 embedded-hal = "0.2.4"
 rtt-target = {version = "0.2.0", features = ["cortex-m"] }
 

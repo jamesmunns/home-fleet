@@ -19,6 +19,8 @@ use {
         default::Default,
         sync::atomic::AtomicBool,
     },
+    cortex_m::peripheral::SCB,
+    cortex_m_rt::exception,
     esb::{
         consts::*, irq::StatePTX, Addresses, BBBuffer, ConfigBuilder, ConstBBBuffer, Error,
         EsbBuffer, EsbIrq, IrqTimer,
@@ -33,6 +35,7 @@ use {
         clocks::LfOscConfiguration,
         pac::{RTC0, TIMER0},
         rtc::{RtcInterrupt, Started},
+        wdt::{count, handles::HdlN, Parts as WatchdogParts, Watchdog, WatchdogHandle},
         Rng, Rtc,
     },
     panic_persist::get_panic_message_utf8,
@@ -50,6 +53,8 @@ const APP: () = {
         relays: Relays<RollingRtcTimer>,
         rtc: Rtc<RTC0, Started>,
         rtc_timer: RollingRtcTimer,
+        relay_wdog: WatchdogHandle<HdlN>,
+        esb_wdog: WatchdogHandle<HdlN>,
     }
 
     #[init(spawn = [relay_periodic, rx_periodic, relay_status])]
@@ -79,6 +84,45 @@ const APP: () = {
             .unwrap();
 
         let esb_irq = esb_irq.into_ptx();
+
+        // Create a new watchdog instance
+        //
+        // In case the watchdog is already running, just spin and let it expire, since
+        // we can't configure it anyway. This usually happens when we first program
+        // the device and the watchdog was previously active
+        let (relay_wdog, esb_wdog) = match Watchdog::try_new(ctx.device.WDT) {
+            Ok(mut watchdog) => {
+                // Set the watchdog to timeout after 5 seconds (in 32.768kHz ticks)
+                watchdog.set_lfosc_ticks(30 * 32768);
+
+                // Activate the watchdog with four handles
+                let WatchdogParts {
+                    watchdog: _watchdog,
+                    handles,
+                } = watchdog.activate::<count::Two>();
+
+                handles
+            }
+            Err(wdt) => match Watchdog::try_recover::<count::Two>(wdt) {
+                Ok(WatchdogParts { mut handles, .. }) => {
+                    rprintln!("Oops, watchdog already active, but recovering!");
+
+                    // Pet all the dogs quickly to reset to default timeout
+                    handles.0.pet();
+                    handles.1.pet();
+
+                    handles
+                }
+                Err(_wdt) => {
+                    rprintln!("Oops, watchdog already active, resetting!");
+                    loop {
+                        continue;
+                    }
+                }
+            },
+        };
+
+        let (relay_wdog, esb_wdog) = (relay_wdog.degrade(), esb_wdog.degrade());
 
         rtt_init_print!();
 
@@ -125,6 +169,8 @@ const APP: () = {
             esb_timer,
             relays,
             rtc,
+            relay_wdog,
+            esb_wdog,
             rtc_timer: RollingRtcTimer::new(),
         }
     }
@@ -182,9 +228,12 @@ const APP: () = {
 
     /// This software event fires periodically, sending the current status
     /// of the relays over the radio
-    #[task(schedule = [relay_status], resources = [relays, esb_app])]
+    #[task(schedule = [relay_status], resources = [relays, esb_app, relay_wdog])]
     fn relay_status(ctx: relay_status::Context) {
         const INTERVAL: i32 = timer::SIGNED_TICKS_PER_SECOND * 3;
+
+        // Check the relays? Pet the dog.
+        ctx.resources.relay_wdog.pet();
 
         let stat = ctx.resources.relays.current_state();
         let msg = DeviceToHost::PlantLight(PlantLightDeviceMessage::Status(stat));
@@ -200,19 +249,24 @@ const APP: () = {
     ///
     /// We also also check to see if we haven't heard from the remote device in
     /// a while. If so, we reboot.
-    #[task(schedule = [rx_periodic], spawn = [relay_command], resources = [esb_app])]
+    #[task(schedule = [rx_periodic], spawn = [relay_command], resources = [esb_app, esb_wdog])]
     fn rx_periodic(ctx: rx_periodic::Context) {
         // Roughly 10ms
         const INTERVAL: i32 = timer::SIGNED_TICKS_PER_SECOND / 100;
         // Roughly 100ms
         const POLL_PRX_INTERVAL: u32 = timer::TICKS_PER_SECOND / 10;
-        // Roughly 60s
-        const RESET_INTERVAL: u32 = timer::TICKS_PER_SECOND * 60;
 
         let esb_app = ctx.resources.esb_app;
 
         'rx: loop {
-            match esb_app.receive() {
+            let msg = esb_app.receive();
+
+            // Got a message? Pet the dog.
+            if let Ok(Some(_)) = &msg {
+                ctx.resources.esb_wdog.pet();
+            }
+
+            match msg {
                 Ok(None) => break 'rx,
                 Ok(Some(RxMessage {
                     msg: HostToDevice::PlantLight(m),
@@ -239,11 +293,6 @@ const APP: () = {
             }
         }
 
-        // Decide if we should watchdog
-        if esb_app.ticks_since_last_rx() > RESET_INTERVAL {
-            panic!("It's quiet, tooooo quiet.");
-        }
-
         ctx.schedule.rx_periodic(ctx.scheduled + INTERVAL).ok();
     }
 
@@ -262,3 +311,11 @@ const APP: () = {
     // fn SWI3_EGU3();
     }
 };
+
+#[exception]
+unsafe fn DefaultHandler(_irqn: i16) -> ! {
+    // On any unhandled faults, abort immediately
+    // TODO: Probably want to log this or store it somewhere
+    // so we can detect that a fault has happened?
+    SCB::sys_reset()
+}

@@ -20,6 +20,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "alloc-traits"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6b2d54853319fd101b8dd81de382bcbf3e03410a64d8928bbee85a3e7dcde483"
+
+[[package]]
+name = "always-on-key"
+version = "0.0.1"
+dependencies = [
+ "bbqueue",
+ "cortex-m",
+ "cortex-m-rt",
+ "cortex-m-rtfm",
+ "embedded-hal",
+ "esb",
+ "fleet-esb",
+ "fleet-icd",
+ "fleet-keys",
+ "nrf51-hal 0.10.0",
+ "nrf52810-hal 0.10.0",
+ "nrf52832-hal 0.10.0",
+ "nrf52840-hal 0.10.0",
+ "panic-persist",
+ "rtt-target",
+]
+
+[[package]]
 name = "as-slice"
 version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -162,7 +189,7 @@ version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fa998ce59ec9765d15216393af37a58961ddcefb14c753b4816ba2191d865fcb"
 dependencies = [
- "nb",
+ "nb 0.1.3",
  "void",
 ]
 
@@ -180,15 +207,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "fixed"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d4b58d7066268f26a74aba4b44d31d70ca57248536827318b80e92ab77e0e5b9"
+dependencies = [
+ "typenum",
+]
+
+[[package]]
 name = "fleet-esb"
 version = "0.1.0"
 dependencies = [
  "chacha20poly1305",
  "esb",
- "nrf51-hal",
- "nrf52810-hal",
- "nrf52832-hal",
- "nrf52840-hal",
+ "nrf51-hal 0.11.0",
+ "nrf52810-hal 0.11.0",
+ "nrf52832-hal 0.11.0",
+ "nrf52840-hal 0.11.0",
  "postcard",
  "serde",
 ]
@@ -212,9 +248,9 @@ version = "0.1.0"
 dependencies = [
  "bbqueue",
  "embedded-hal",
- "nrf52810-hal",
- "nrf52832-hal",
- "nrf52840-hal",
+ "nrf52810-hal 0.11.0",
+ "nrf52832-hal 0.11.0",
+ "nrf52840-hal 0.11.0",
  "rtt-target",
 ]
 
@@ -289,21 +325,50 @@ dependencies = [
 
 [[package]]
 name = "nb"
-version = "0.1.2"
+version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b1411551beb3c11dedfb0a90a0fa256b47d28b9ec2cdff34c25a2fa59e45dbdc"
+checksum = "801d31da0513b6ec5214e9bf433a77966320625a37860f910be265be6e18d06f"
+dependencies = [
+ "nb 1.0.0",
+]
+
+[[package]]
+name = "nb"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "546c37ac5d9e56f55e73b677106873d9d9f5190605e41a856503623648488cae"
 
 [[package]]
 name = "nrf-hal-common"
 version = "0.10.0"
-source = "git+https://github.com/jamesmunns/nrf-hal.git?rev=ppi-impl#5820c7cf637af6109599e1b9ea32c3ff57fbd0fe"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cc36b48f37fdeeb88821733f8049bfee490fa76376746760c83bc4faa850320b"
+dependencies = [
+ "cast",
+ "cortex-m",
+ "embedded-hal",
+ "fpa",
+ "nb 0.1.3",
+ "nrf51",
+ "nrf52810-pac",
+ "nrf52832-pac",
+ "nrf52840-pac",
+ "rand_core",
+ "void",
+]
+
+[[package]]
+name = "nrf-hal-common"
+version = "0.11.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "299e8e5b67542ae134c93722f03f3137d349b3786a35dd2b02a87701ea779201"
 dependencies = [
  "cast",
  "cfg-if",
  "cortex-m",
  "embedded-hal",
- "fpa",
- "nb",
+ "fixed",
+ "nb 1.0.0",
  "nrf51",
  "nrf52810-pac",
  "nrf52832-pac",
@@ -333,10 +398,21 @@ dependencies = [
  "cast",
  "cortex-m",
  "embedded-hal",
- "nb",
- "nrf-hal-common",
+ "nb 0.1.3",
+ "nrf-hal-common 0.10.0",
  "nrf51",
  "void",
+]
+
+[[package]]
+name = "nrf51-hal"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8bfd595e621192936148d483567fc08253abd4b01691e6fc883d0d80c38ddadd"
+dependencies = [
+ "embedded-hal",
+ "nrf-hal-common 0.11.1",
+ "nrf51",
 ]
 
 [[package]]
@@ -348,10 +424,21 @@ dependencies = [
  "cast",
  "cortex-m",
  "embedded-hal",
- "nb",
- "nrf-hal-common",
+ "nb 0.1.3",
+ "nrf-hal-common 0.10.0",
  "nrf52810-pac",
  "void",
+]
+
+[[package]]
+name = "nrf52810-hal"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9146d4843c58de8c43089b646194bb9b6871f80b129e038108e11ceb692d39ac"
+dependencies = [
+ "embedded-hal",
+ "nrf-hal-common 0.11.1",
+ "nrf52810-pac",
 ]
 
 [[package]]
@@ -375,10 +462,21 @@ dependencies = [
  "cast",
  "cortex-m",
  "embedded-hal",
- "nb",
- "nrf-hal-common",
+ "nb 0.1.3",
+ "nrf-hal-common 0.10.0",
  "nrf52832-pac",
  "void",
+]
+
+[[package]]
+name = "nrf52832-hal"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9fd1764acdf1f9da9803b00867586de13a2c23ab2b1231a3cf1ae4fc2cfbb403"
+dependencies = [
+ "embedded-hal",
+ "nrf-hal-common 0.11.1",
+ "nrf52832-pac",
 ]
 
 [[package]]
@@ -402,10 +500,21 @@ dependencies = [
  "cast",
  "cortex-m",
  "embedded-hal",
- "nb",
- "nrf-hal-common",
+ "nb 0.1.3",
+ "nrf-hal-common 0.10.0",
  "nrf52840-pac",
  "void",
+]
+
+[[package]]
+name = "nrf52840-hal"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "87f7e01810b986e03c6cbe24dbcdd479a930e23e6b738540fe71c8b6389f475c"
+dependencies = [
+ "embedded-hal",
+ "nrf-hal-common 0.11.1",
+ "nrf52840-pac",
 ]
 
 [[package]]
@@ -443,7 +552,7 @@ dependencies = [
  "fleet-icd",
  "fleet-keys",
  "fleet-uarte",
- "nrf52832-hal",
+ "nrf52832-hal 0.11.0",
  "panic-persist",
  "postcard",
  "rtt-target",
@@ -462,10 +571,10 @@ dependencies = [
  "fleet-esb",
  "fleet-icd",
  "fleet-keys",
- "nrf51-hal",
- "nrf52810-hal",
- "nrf52832-hal",
- "nrf52840-hal",
+ "nrf51-hal 0.11.0",
+ "nrf52810-hal 0.11.0",
+ "nrf52832-hal 0.11.0",
+ "nrf52840-hal 0.11.0",
  "panic-persist",
  "rtt-target",
 ]
@@ -564,6 +673,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "scratch"
+version = "0.0.1"
+dependencies = [
+ "bbqueue",
+ "cortex-m",
+ "cortex-m-rt",
+ "cortex-m-rtfm",
+ "embedded-hal",
+ "esb",
+ "fleet-esb",
+ "fleet-icd",
+ "fleet-keys",
+ "fleet-uarte",
+ "nrf51-hal 0.10.0",
+ "nrf52810-hal 0.10.0",
+ "nrf52832-hal 0.10.0",
+ "nrf52840-hal 0.10.0",
+ "panic-persist",
+ "rtt-target",
+ "static-alloc",
+]
+
+[[package]]
 name = "semver"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -605,6 +737,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dba1a27d3efae4351c8051072d619e3ade2820635c3958d826bfea39d59b54c8"
 
 [[package]]
+name = "static-alloc"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5b22977ca52f40f76d9f3fc736188e620a2dff91f952d243c7cbf79d3060fc91"
+dependencies = [
+ "alloc-traits",
+]
+
+[[package]]
 name = "stream-cipher"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -644,10 +785,10 @@ dependencies = [
  "fleet-icd",
  "fleet-keys",
  "fleet-uarte",
- "nrf51-hal",
- "nrf52810-hal",
- "nrf52832-hal",
- "nrf52840-hal",
+ "nrf51-hal 0.10.0",
+ "nrf52810-hal 0.10.0",
+ "nrf52832-hal 0.10.0",
+ "nrf52840-hal 0.10.0",
  "panic-persist",
  "rtt-target",
 ]

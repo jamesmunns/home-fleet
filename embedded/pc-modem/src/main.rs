@@ -6,7 +6,8 @@ use nrf52832_hal as hal;
 
 use {
     core::{default::Default, sync::atomic::AtomicBool},
-    cortex_m::asm::bkpt,
+    cortex_m::{asm::bkpt, peripheral::SCB},
+    cortex_m_rt::exception,
     esb::{
         consts::*, irq::StatePRX, Addresses, BBBuffer, Config, ConstBBBuffer, Error, EsbBuffer,
         EsbIrq, IrqTimer,
@@ -14,25 +15,18 @@ use {
     hal::{
         clocks::LfOscConfiguration,
         gpio::Level,
-        pac::{TIMER0, TIMER1, TIMER2, RTC0},
+        pac::{RTC0, TIMER0, TIMER2},
         ppi::{Parts, Ppi0},
-        Timer,
-        rtc::{Rtc, Started, RtcInterrupt},
+        rtc::{Rtc, RtcInterrupt, Started},
+        wdt::{count, handles::HdlN, Parts as WatchdogParts, Watchdog, WatchdogHandle},
     },
     rtt_target::{rprintln, rtt_init_print},
 };
 
-#[cfg(not(feature = "51"))]
-use embedded_hal::blocking::delay::DelayMs;
-
-use fleet_esb::{
-    prx::FleetRadioPrx,
-    RxMessage,
-    RollingTimer,
-};
+use fleet_esb::{prx::FleetRadioPrx, RxMessage};
 use fleet_icd::{
-    radio::{DeviceToHost, HostToDevice, GeneralDeviceMessage},
-    modem::{PcToModem, ModemToPc},
+    modem::{ModemToPc, PcToModem},
+    radio::{DeviceToHost, GeneralDeviceMessage, HostToDevice},
     Buffer as CobsBuffer, FeedResult,
 };
 use fleet_keys::keys::KEY;
@@ -48,17 +42,24 @@ use timer::RollingRtcTimer;
 // Panic provider crate
 use panic_persist;
 
+static BUFFER: EsbBuffer<U8192, U8192> = EsbBuffer {
+    app_to_radio_buf: BBBuffer(ConstBBBuffer::new()),
+    radio_to_app_buf: BBBuffer(ConstBBBuffer::new()),
+    timer_flag: AtomicBool::new(false),
+};
+
 #[rtfm::app(device = crate::hal::pac, peripherals = true)]
 const APP: () = {
     struct Resources {
         esb_app: FleetRadioPrx<U8192, U8192, HostToDevice, DeviceToHost>,
         esb_irq: EsbIrq<U8192, U8192, TIMER0, StatePRX>,
         esb_timer: IrqTimer<TIMER0>,
-        timer: Timer<TIMER1>,
+        esb_wdog: WatchdogHandle<HdlN>,
 
         uarte_timer: fleet_uarte::irq::UarteTimer<TIMER2>,
         uarte_irq: fleet_uarte::irq::UarteIrq<U1024, U1024, Ppi0>,
         uarte_app: fleet_uarte::app::UarteApp<U1024, U1024>,
+        uarte_wdog: WatchdogHandle<HdlN>,
 
         cobs_buf: CobsBuffer<U256>,
 
@@ -77,11 +78,6 @@ const APP: () = {
 
         let uart = ctx.device.UARTE0;
 
-        static BUFFER: EsbBuffer<U8192, U8192> = EsbBuffer {
-            app_to_radio_buf: BBBuffer(ConstBBBuffer::new()),
-            radio_to_app_buf: BBBuffer(ConstBBBuffer::new()),
-            timer_flag: AtomicBool::new(false),
-        };
         let addresses = Addresses::default();
         let config = Config::default();
         let (esb_app, esb_irq, esb_timer) = BUFFER
@@ -96,6 +92,55 @@ const APP: () = {
                 rxd_buf: BBBuffer(ConstBBBuffer::new()),
                 timeout_flag: AtomicBool::new(false),
             };
+
+        // Create a new watchdog instance
+        //
+        // In case the watchdog is already running, just spin and let it expire, since
+        // we can't configure it anyway. This usually happens when we first program
+        // the device and the watchdog was previously active
+        let (uarte_wdog, esb_wdog) = match Watchdog::try_new(ctx.device.WDT) {
+            Ok(mut watchdog) => {
+                // Set the watchdog to timeout after 5 seconds (in 32.768kHz ticks)
+                watchdog.set_lfosc_ticks(5 * 32768);
+
+                // Activate the watchdog with four handles
+                let WatchdogParts {
+                    watchdog: _watchdog,
+                    handles,
+                } = watchdog.activate::<count::Two>();
+
+                handles
+            }
+            Err(wdt) => match Watchdog::try_recover::<count::Two>(wdt) {
+                Ok(WatchdogParts { mut handles, .. }) => {
+                    rprintln!("Oops, watchdog already active, but recovering!");
+
+                    // Pet all the dogs quickly to reset to default timeout
+                    handles.0.pet();
+                    handles.1.pet();
+
+                    handles
+                }
+                Err(_wdt) => {
+                    rprintln!("Oops, watchdog already active, resetting!");
+                    loop {
+                        continue;
+                    }
+                }
+            },
+        };
+
+        if ctx.device.POWER.resetreas.read().dog().is_detected() {
+            ctx.device.POWER.resetreas.modify(|_r, w| {
+                // Clear the watchdog reset reason bit
+                w.dog().set_bit()
+            });
+            rprintln!("Restarted by the dog!");
+        } else {
+            rprintln!("Not restarted by the dog!");
+        }
+
+        let (uarte_wdog, esb_wdog) = (uarte_wdog.degrade(), esb_wdog.degrade());
 
         rtt_init_print!();
 
@@ -142,25 +187,24 @@ const APP: () = {
             esb_app,
             esb_irq,
             esb_timer,
-            timer: Timer::new(ctx.device.TIMER1),
+            esb_wdog,
             uarte_timer: ue.timer,
             uarte_irq: ue.irq,
             uarte_app: ue.app,
+            uarte_wdog,
             cobs_buf: CobsBuffer::new(),
             rtc,
             rtc_timer: RollingRtcTimer::new(),
         }
     }
 
-    #[idle(resources = [esb_app, timer, uarte_app, cobs_buf])]
+    #[idle(resources = [esb_app, uarte_app, cobs_buf, esb_wdog, uarte_wdog])]
     fn idle(ctx: idle::Context) -> ! {
         let esb_app = ctx.resources.esb_app;
-        let timer = ctx.resources.timer;
         let uarte_app = ctx.resources.uarte_app;
         let cobs_buf = ctx.resources.cobs_buf;
-        let rtc = RollingRtcTimer::new();
-        let mut last_radio_rx = rtc.get_current_tick();
-        let mut last_uarte_rx = rtc.get_current_tick();
+        let uarte_wdog = ctx.resources.uarte_wdog;
+        let esb_wdog = ctx.resources.esb_wdog;
 
         rprintln!("Start!");
 
@@ -168,35 +212,37 @@ const APP: () = {
             let rx = esb_app.receive();
 
             if let &Ok(Some(_)) = &rx {
-                last_radio_rx = rtc.get_current_tick();
+                // Got a message? Pet the dog
+                esb_wdog.pet();
             }
 
             // Check for radio messages
             match rx {
-                Ok(Some(RxMessage { msg: DeviceToHost::General(GeneralDeviceMessage::InitializeSession), .. })) => {
+                Ok(Some(RxMessage {
+                    msg: DeviceToHost::General(GeneralDeviceMessage::InitializeSession),
+                    ..
+                })) => {
 
                     // Ignore
                 }
-                Ok(Some(msg)) => {
-                    match uarte_app.write_grant(128) {
-                        Ok(mut wgr) => {
-                            let smsg = ModemToPc::Incoming {
-                                pipe: msg.meta.pipe,
-                                msg: msg.msg,
-                            };
+                Ok(Some(msg)) => match uarte_app.write_grant(128) {
+                    Ok(mut wgr) => {
+                        let smsg = ModemToPc::Incoming {
+                            pipe: msg.meta.pipe,
+                            msg: msg.msg,
+                        };
 
-                            let used: usize = to_slice_cobs(&smsg, &mut wgr)
-                                .map(|buf| buf.len())
-                                .unwrap_or(0);
+                        let used: usize = to_slice_cobs(&smsg, &mut wgr)
+                            .map(|buf| buf.len())
+                            .unwrap_or(0);
 
-                            wgr.commit(used);
-                        }
-                        Err(e) => {
-                            rprintln!("uartetxerr: {:?}", e);
-                        }
+                        wgr.commit(used);
                     }
-                }
-                Ok(None) => {},
+                    Err(e) => {
+                        rprintln!("uartetxerr: {:?}", e);
+                    }
+                },
+                Ok(None) => {}
                 Err(e) => {
                     rprintln!("rxerr: {:?}", e);
                 }
@@ -204,7 +250,7 @@ const APP: () = {
 
             // Check for uart messages
             if let Ok(rgr) = uarte_app.read() {
-                last_uarte_rx = rtc.get_current_tick();
+                uarte_wdog.pet();
                 let mut buf: &[u8] = &rgr;
                 loop {
                     if buf.is_empty() {
@@ -229,10 +275,7 @@ const APP: () = {
 
                         // Deserialization complete. Contains deserialized data and
                         // remaining section of input, if any
-                        FeedResult::Success {
-                            data,
-                            remaining
-                        } => {
+                        FeedResult::Success { data, remaining } => {
                             match data {
                                 PcToModem::Outgoing { msg, pipe } => {
                                     rprintln!("sending to {}: {:?}", pipe, msg);
@@ -248,22 +291,7 @@ const APP: () = {
                 let len = rgr.len();
                 rgr.release(len);
             }
-
-            let now = rtc.get_current_tick();
-            let delta_radio = now.wrapping_sub(last_radio_rx);
-            let delta_uarte = now.wrapping_sub(last_uarte_rx);
-
-            if delta_radio >= (5 * timer::TICKS_PER_SECOND) {
-                panic!("Too quiet! - Radio!");
-            }
-
-            if delta_uarte >= (5 * timer::TICKS_PER_SECOND) {
-                panic!("Too quiet! - Uarte!");
-            }
-
-            timer.delay_ms(10u8);
         }
-
     }
 
     #[task(binds = RADIO, resources = [esb_irq], priority = 3)]
@@ -305,3 +333,11 @@ const APP: () = {
         ctx.resources.uarte_irq.interrupt();
     }
 };
+
+#[exception]
+unsafe fn DefaultHandler(_irqn: i16) -> ! {
+    // On any unhandled faults, abort immediately
+    // TODO: Probably want to log this or store it somewhere
+    // so we can detect that a fault has happened?
+    SCB::sys_reset()
+}
