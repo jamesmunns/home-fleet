@@ -17,6 +17,8 @@ nrf52832-hal = { version = "0.11", features = ["rt"], optional = true }
 nrf52840-hal = { version = "0.11", features = ["rt"], optional = true }
 nrf51-hal = {version = "0.11.0", features = ["rt"], optional = true}
 
+blinq = "0.1"
+
 [dependencies.esb]
 version = "0.1.0"
 features = ["fast-ru"]

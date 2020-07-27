@@ -101,7 +101,7 @@ const APP: () = {
         let (uarte_wdog, esb_wdog) = match Watchdog::try_new(ctx.device.WDT) {
             Ok(mut watchdog) => {
                 // Set the watchdog to timeout after 5 seconds (in 32.768kHz ticks)
-                watchdog.set_lfosc_ticks(5 * 32768);
+                watchdog.set_lfosc_ticks(30 * 32768);
 
                 // Activate the watchdog with four handles
                 let WatchdogParts {
@@ -225,23 +225,12 @@ const APP: () = {
 
                     // Ignore
                 }
-                Ok(Some(msg)) => match uarte_app.write_grant(128) {
-                    Ok(mut wgr) => {
-                        let smsg = ModemToPc::Incoming {
-                            pipe: msg.meta.pipe,
-                            msg: msg.msg,
-                        };
-
-                        let used: usize = to_slice_cobs(&smsg, &mut wgr)
-                            .map(|buf| buf.len())
-                            .unwrap_or(0);
-
-                        wgr.commit(used);
-                    }
-                    Err(e) => {
-                        rprintln!("uartetxerr: {:?}", e);
-                    }
-                },
+                Ok(Some(msg)) => {
+                    try_send(uarte_app, &ModemToPc::Incoming {
+                        pipe: msg.meta.pipe,
+                        msg: msg.msg,
+                    })
+                }
                 Ok(None) => {}
                 Err(e) => {
                     rprintln!("rxerr: {:?}", e);
@@ -250,7 +239,6 @@ const APP: () = {
 
             // Check for uart messages
             if let Ok(rgr) = uarte_app.read() {
-                uarte_wdog.pet();
                 let mut buf: &[u8] = &rgr;
                 loop {
                     if buf.is_empty() {
@@ -276,7 +264,13 @@ const APP: () = {
                         // Deserialization complete. Contains deserialized data and
                         // remaining section of input, if any
                         FeedResult::Success { data, remaining } => {
+                            // On successful decode, pet the watchdog
+                            uarte_wdog.pet();
+
                             match data {
+                                PcToModem::Ping => {
+                                    try_send(uarte_app, &ModemToPc::Pong);
+                                }
                                 PcToModem::Outgoing { msg, pipe } => {
                                     rprintln!("sending to {}: {:?}", pipe, msg);
                                     esb_app.send(&msg, pipe).unwrap();
@@ -340,4 +334,19 @@ unsafe fn DefaultHandler(_irqn: i16) -> ! {
     // TODO: Probably want to log this or store it somewhere
     // so we can detect that a fault has happened?
     SCB::sys_reset()
+}
+
+fn try_send(uarte: &mut fleet_uarte::app::UarteApp<U1024, U1024>, msg: &ModemToPc) {
+    match uarte.write_grant(128) {
+        Ok(mut wgr) => {
+            let used: usize = to_slice_cobs(&msg, &mut wgr)
+                .map(|buf| buf.len())
+                .unwrap_or(0);
+
+            wgr.commit(used);
+        }
+        Err(e) => {
+            rprintln!("uartetxerr: {:?}", e);
+        }
+    }
 }

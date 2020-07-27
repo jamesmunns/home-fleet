@@ -15,6 +15,9 @@ use nrf52832_hal as hal;
 use nrf52840_hal as hal;
 
 use {
+    blinq::{
+        Blinq, patterns, consts,
+    },
     core::{
         default::Default,
         sync::atomic::AtomicBool,
@@ -33,6 +36,7 @@ use {
     fleet_keys::keys::KEY,
     hal::{
         clocks::LfOscConfiguration,
+        gpio::{Pin, PushPull, Output, Level},
         pac::{RTC0, TIMER0},
         rtc::{RtcInterrupt, Started},
         wdt::{count, handles::HdlN, Parts as WatchdogParts, Watchdog, WatchdogHandle},
@@ -55,10 +59,51 @@ const APP: () = {
         rtc_timer: RollingRtcTimer,
         relay_wdog: WatchdogHandle<HdlN>,
         esb_wdog: WatchdogHandle<HdlN>,
+
+        blue_led: Blinq<consts::U8, Pin<Output<PushPull>>>,
+        green_led: Blinq<consts::U8, Pin<Output<PushPull>>>,
+        red_led: Blinq<consts::U8, Pin<Output<PushPull>>>,
     }
 
-    #[init(spawn = [relay_periodic, rx_periodic, relay_status])]
+    #[init(spawn = [relay_periodic, rx_periodic, relay_status, led_periodic])]
     fn init(ctx: init::Context) -> init::LateResources {
+        // Set internal regulator voltage to 3v3 instead of 1v8
+        if !ctx.device.UICR.regout0.read().vout().is_3v3() {
+            // Enable erase
+            ctx.device.NVMC.config.write(|w| {
+                w.wen().een()
+            });
+            while ctx.device.NVMC.ready.read().ready().is_busy() {}
+
+            // Erase regout0 page
+            ctx.device.NVMC.erasepage().write(|w| unsafe {
+                w.erasepage().bits(&ctx.device.UICR.regout0 as *const _ as u32)
+            });
+            while ctx.device.NVMC.ready.read().ready().is_busy() {}
+
+            // enable write
+            ctx.device.NVMC.config.write(|w| {
+                w.wen().wen()
+            });
+            while ctx.device.NVMC.ready.read().ready().is_busy() {}
+
+            // Set 3v3 setting
+            ctx.device.UICR.regout0.write(|w| {
+                w.vout()._3v3()
+            });
+            while ctx.device.NVMC.ready.read().ready().is_busy() {}
+
+            // Return UCIR to read only
+            ctx.device.NVMC.config.write(|w| {
+                w.wen().ren()
+            });
+            while ctx.device.NVMC.ready.read().ready().is_busy() {}
+
+            // system reset
+            SCB::sys_reset();
+        }
+
+
         let clocks = hal::clocks::Clocks::new(ctx.device.CLOCK);
         let clocks = clocks.enable_ext_hfosc();
         let clocks = clocks.set_lfclk_src_external(LfOscConfiguration::NoExternalNoBypass);
@@ -95,6 +140,9 @@ const APP: () = {
                 // Set the watchdog to timeout after 5 seconds (in 32.768kHz ticks)
                 watchdog.set_lfosc_ticks(30 * 32768);
 
+                watchdog.run_during_debug_halt(true);
+                watchdog.run_during_sleep(true);
+
                 // Activate the watchdog with four handles
                 let WatchdogParts {
                     watchdog: _watchdog,
@@ -129,6 +177,8 @@ const APP: () = {
         if let Some(msg) = get_panic_message_utf8() {
             // write the panic message
             rprintln!("{}", msg);
+        } else {
+            rprintln!("Starting clean!");
         }
 
         let mut rng = Rng::new(ctx.device.RNG);
@@ -162,6 +212,27 @@ const APP: () = {
         ctx.spawn.rx_periodic().ok();
         ctx.spawn.relay_periodic().ok();
         ctx.spawn.relay_status().ok();
+        ctx.spawn.led_periodic().ok();
+
+        let mut blue  = Blinq::new(
+            p0.p0_12.into_push_pull_output(Level::High).degrade(),
+            true
+        );
+        let mut red   = Blinq::new(
+            p0.p0_08.into_push_pull_output(Level::High).degrade(),
+            true
+        );
+        let mut green = Blinq::new(
+            p1.p1_09.into_push_pull_output(Level::High).degrade(),
+            true
+        );
+
+        // Insert 3s of all white short blink on reset
+        for _ in 0..3 {
+            red.enqueue(patterns::blinks::QUARTER_DUTY);
+            green.enqueue(patterns::blinks::QUARTER_DUTY);
+            blue.enqueue(patterns::blinks::QUARTER_DUTY);
+        }
 
         init::LateResources {
             esb_app: radio,
@@ -172,15 +243,23 @@ const APP: () = {
             relay_wdog,
             esb_wdog,
             rtc_timer: RollingRtcTimer::new(),
+            blue_led: blue,
+            red_led: red,
+            green_led: green,
         }
     }
 
 
     /// We don't do anything in idle. Just loop waiting for events
-    #[idle]
-    fn idle(_ctx: idle::Context) -> ! {
+    #[idle(resources = [green_led])]
+    fn idle(mut ctx: idle::Context) -> ! {
         loop {
-            cortex_m::asm::wfe();
+            ctx.resources.green_led.lock(|l| {
+                if l.idle() {
+                    l.enqueue(patterns::blinks::LONG_ON_OFF);
+                }
+            });
+            cortex_m::asm::wfi();
         }
     }
 
@@ -228,18 +307,28 @@ const APP: () = {
 
     /// This software event fires periodically, sending the current status
     /// of the relays over the radio
-    #[task(schedule = [relay_status], resources = [relays, esb_app, relay_wdog])]
+    #[task(schedule = [relay_status], resources = [relays, esb_app, relay_wdog, red_led])]
     fn relay_status(ctx: relay_status::Context) {
         const INTERVAL: i32 = timer::SIGNED_TICKS_PER_SECOND * 3;
 
         // Check the relays? Pet the dog.
         ctx.resources.relay_wdog.pet();
+        ctx.resources.red_led.enqueue(patterns::blinks::MEDIUM_ON_OFF);
 
         let stat = ctx.resources.relays.current_state();
         let msg = DeviceToHost::PlantLight(PlantLightDeviceMessage::Status(stat));
         ctx.resources.esb_app.send(&msg, 0).ok();
 
         ctx.schedule.relay_status(ctx.scheduled + INTERVAL).ok();
+    }
+
+    #[task(schedule = [led_periodic], resources = [red_led, blue_led, green_led])]
+    fn led_periodic(ctx: led_periodic::Context) {
+        ctx.resources.red_led.step();
+        ctx.resources.green_led.step();
+        ctx.resources.blue_led.step();
+
+        ctx.schedule.led_periodic(ctx.scheduled + (timer::SIGNED_TICKS_PER_SECOND / 4)).ok();
     }
 
     /// This software event fires periodically, processing any incoming messages
@@ -249,7 +338,7 @@ const APP: () = {
     ///
     /// We also also check to see if we haven't heard from the remote device in
     /// a while. If so, we reboot.
-    #[task(schedule = [rx_periodic], spawn = [relay_command], resources = [esb_app, esb_wdog])]
+    #[task(schedule = [rx_periodic], spawn = [relay_command], resources = [esb_app, esb_wdog, blue_led])]
     fn rx_periodic(ctx: rx_periodic::Context) {
         // Roughly 10ms
         const INTERVAL: i32 = timer::SIGNED_TICKS_PER_SECOND / 100;
@@ -264,6 +353,7 @@ const APP: () = {
             // Got a message? Pet the dog.
             if let Ok(Some(_)) = &msg {
                 ctx.resources.esb_wdog.pet();
+                ctx.resources.blue_led.enqueue(patterns::blinks::LONG_ON_OFF);
             }
 
             match msg {
@@ -313,7 +403,8 @@ const APP: () = {
 };
 
 #[exception]
-unsafe fn DefaultHandler(_irqn: i16) -> ! {
+unsafe fn DefaultHandler(irqn: i16) -> ! {
+    rprintln!("uh oh! {}", irqn);
     // On any unhandled faults, abort immediately
     // TODO: Probably want to log this or store it somewhere
     // so we can detect that a fault has happened?
