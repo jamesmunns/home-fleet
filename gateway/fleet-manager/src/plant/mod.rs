@@ -119,10 +119,10 @@ impl Plant {
 
         let mut result = vec![];
         {
-            let mut state = self.inner.lock().map_err(|t| "lol".to_string())?;
+            let mut state = self.inner.lock().map_err(|_t| "lol".to_string())?;
             for relay in state.state.iter_mut() {
                 relay.insert(be_on, RelayPriority::Scheduled, 15);
-                result.push(*relay.get_data().unwrap());
+                result.push(*relay.get_data().ok_or_else(|| "wtf".to_string())?);
             }
 
             let should_tx = match state.last_tx {

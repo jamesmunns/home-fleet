@@ -553,6 +553,7 @@ name = "pc-modem"
 version = "0.0.1"
 dependencies = [
  "bbqueue",
+ "blinq",
  "cortex-m",
  "cortex-m-rt",
  "cortex-m-rtfm",

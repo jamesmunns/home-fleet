@@ -6,7 +6,7 @@ use fleet_esb::RollingTimer;
 use fleet_icd::radio::{RelayIdx, RelayState, RelayStatus, ShelfStatus};
 
 const MIN_TOGGLE_DELTA: u32 = 3 * TICKS_PER_SECOND;
-const COMMS_TIMEOUT: u32 = 60 * TICKS_PER_SECOND;
+const COMMS_TIMEOUT: u32 = 5 * 60 * TICKS_PER_SECOND;
 
 pub struct Relays<T>
 where

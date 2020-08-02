@@ -9,12 +9,12 @@ use {
     cortex_m::{asm::bkpt, peripheral::SCB},
     cortex_m_rt::exception,
     esb::{
-        consts::*, irq::StatePRX, Addresses, BBBuffer, Config, ConstBBBuffer, Error, EsbBuffer,
-        EsbIrq, IrqTimer,
+        consts::*, irq::StatePRX, Addresses, BBBuffer, ConfigBuilder, ConstBBBuffer, Error, EsbBuffer,
+        EsbIrq, IrqTimer, TxPower,
     },
     hal::{
         clocks::LfOscConfiguration,
-        gpio::Level,
+        gpio::{Pin, Level, Output, PushPull},
         pac::{RTC0, TIMER0, TIMER2},
         ppi::{Parts, Ppi0},
         rtc::{Rtc, RtcInterrupt, Started},
@@ -39,6 +39,8 @@ mod timer;
 
 use timer::RollingRtcTimer;
 
+use blinq::{Blinq, consts, patterns};
+
 // Panic provider crate
 use panic_persist;
 
@@ -48,7 +50,7 @@ static BUFFER: EsbBuffer<U8192, U8192> = EsbBuffer {
     timer_flag: AtomicBool::new(false),
 };
 
-#[rtfm::app(device = crate::hal::pac, peripherals = true)]
+#[rtfm::app(device = crate::hal::pac, peripherals = true, monotonic = crate::timer::RollingRtcTimer)]
 const APP: () = {
     struct Resources {
         esb_app: FleetRadioPrx<U8192, U8192, HostToDevice, DeviceToHost>,
@@ -65,9 +67,14 @@ const APP: () = {
 
         rtc: Rtc<RTC0, Started>,
         rtc_timer: RollingRtcTimer,
+
+        blinq0: Blinq<consts::U8, Pin<Output<PushPull>>>,
+        blinq1: Blinq<consts::U8, Pin<Output<PushPull>>>,
+        blinq2: Blinq<consts::U8, Pin<Output<PushPull>>>,
+        blinq3: Blinq<consts::U8, Pin<Output<PushPull>>>,
     }
 
-    #[init]
+    #[init(spawn = [led_periodic])]
     fn init(ctx: init::Context) -> init::LateResources {
         let clocks = hal::clocks::Clocks::new(ctx.device.CLOCK);
         let clocks = clocks.enable_ext_hfosc();
@@ -79,7 +86,11 @@ const APP: () = {
         let uart = ctx.device.UARTE0;
 
         let addresses = Addresses::default();
-        let config = Config::default();
+        let config = ConfigBuilder::default()
+            .tx_power(TxPower::POS4DBM)
+            .check()
+            .unwrap();
+
         let (esb_app, esb_irq, esb_timer) = BUFFER
             .try_split(ctx.device.TIMER0, ctx.device.RADIO, addresses, config)
             .unwrap();
@@ -100,8 +111,8 @@ const APP: () = {
         // the device and the watchdog was previously active
         let (uarte_wdog, esb_wdog) = match Watchdog::try_new(ctx.device.WDT) {
             Ok(mut watchdog) => {
-                // Set the watchdog to timeout after 5 seconds (in 32.768kHz ticks)
-                watchdog.set_lfosc_ticks(30 * 32768);
+                // Set the watchdog to timeout after 60 seconds (in 32.768kHz ticks)
+                watchdog.set_lfosc_ticks(60 * 32768);
 
                 // Activate the watchdog with four handles
                 let WatchdogParts {
@@ -183,6 +194,39 @@ const APP: () = {
         rtc.get_event_triggered(RtcInterrupt::Tick, true);
         let rtc = rtc.enable_counter();
 
+        // D9 : Led::new(pins.p0_30.degrade()),
+        // D12: Led::new(pins.p0_14.degrade()),
+        // D11: Led::new(pins.p0_22.degrade()),
+        // D10: Led::new(pins.p0_31.degrade()),
+
+        let mut blinq0  = Blinq::new(
+            p0.p0_30.into_push_pull_output(Level::High).degrade(),
+            true
+        );
+        let mut blinq1  = Blinq::new(
+            p0.p0_14.into_push_pull_output(Level::High).degrade(),
+            true
+        );
+        let mut blinq2 = Blinq::new(
+            p0.p0_22.into_push_pull_output(Level::High).degrade(),
+            true
+        );
+        let mut blinq3 = Blinq::new(
+            p0.p0_31.into_push_pull_output(Level::High).degrade(),
+            true
+        );
+
+        // Insert 3s of all white short blink on reset
+        for _ in 0..3 {
+            blinq0.enqueue(patterns::blinks::QUARTER_DUTY);
+            blinq1.enqueue(patterns::blinks::QUARTER_DUTY);
+            blinq2.enqueue(patterns::blinks::QUARTER_DUTY);
+            blinq3.enqueue(patterns::blinks::QUARTER_DUTY);
+        }
+
+        ctx.spawn.led_periodic().ok();
+
+
         init::LateResources {
             esb_app,
             esb_irq,
@@ -195,11 +239,16 @@ const APP: () = {
             cobs_buf: CobsBuffer::new(),
             rtc,
             rtc_timer: RollingRtcTimer::new(),
+
+            blinq0,
+            blinq1,
+            blinq2,
+            blinq3,
         }
     }
 
-    #[idle(resources = [esb_app, uarte_app, cobs_buf, esb_wdog, uarte_wdog])]
-    fn idle(ctx: idle::Context) -> ! {
+    #[idle(resources = [esb_app, uarte_app, cobs_buf, esb_wdog, uarte_wdog, blinq0, blinq1, blinq2, blinq3])]
+    fn idle(mut ctx: idle::Context) -> ! {
         let esb_app = ctx.resources.esb_app;
         let uarte_app = ctx.resources.uarte_app;
         let cobs_buf = ctx.resources.cobs_buf;
@@ -222,17 +271,26 @@ const APP: () = {
                     msg: DeviceToHost::General(GeneralDeviceMessage::InitializeSession),
                     ..
                 })) => {
-
                     // Ignore
                 }
                 Ok(Some(msg)) => {
-                    try_send(uarte_app, &ModemToPc::Incoming {
+                    ctx.resources.blinq0.lock(|b| {
+                        b.enqueue(patterns::blinks::SHORT_ON_OFF);
+                    });
+                    if try_send(uarte_app, &ModemToPc::Incoming {
                         pipe: msg.meta.pipe,
                         msg: msg.msg,
-                    })
+                    }).is_err() {
+                        ctx.resources.blinq2.lock(|b| {
+                            b.enqueue(patterns::blinks::LONG_ON_OFF);
+                        });
+                    }
                 }
                 Ok(None) => {}
                 Err(e) => {
+                    ctx.resources.blinq3.lock(|b| {
+                        b.enqueue(patterns::blinks::LONG_ON_OFF);
+                    });
                     rprintln!("rxerr: {:?}", e);
                 }
             }
@@ -246,10 +304,18 @@ const APP: () = {
                     }
                     match cobs_buf.feed::<PcToModem>(buf) {
                         // Consumed all data, still pending
-                        FeedResult::Consumed => break,
+                        FeedResult::Consumed => {
+                            ctx.resources.blinq1.lock(|b| {
+                                b.enqueue(patterns::blinks::MEDIUM_ON_OFF);
+                            });
+                            break;
+                        },
 
                         // Buffer was filled. Contains remaining section of input, if any
                         FeedResult::OverFull(new_buf) => {
+                            ctx.resources.blinq1.lock(|b| {
+                                b.enqueue(patterns::blinks::SHORT_ON_OFF);
+                            });
                             rprintln!("Overfull");
                             buf = new_buf;
                         }
@@ -257,6 +323,9 @@ const APP: () = {
                         // Reached end of chunk, but deserialization failed. Contains
                         // remaining section of input, if any
                         FeedResult::DeserError(new_buf) => {
+                            ctx.resources.blinq1.lock(|b| {
+                                b.enqueue(patterns::blinks::SHORT_ON_OFF);
+                            });
                             rprintln!("Deser Error");
                             buf = new_buf;
                         }
@@ -264,16 +333,26 @@ const APP: () = {
                         // Deserialization complete. Contains deserialized data and
                         // remaining section of input, if any
                         FeedResult::Success { data, remaining } => {
+                            ctx.resources.blinq1.lock(|b| {
+                                b.enqueue(patterns::blinks::LONG_ON_OFF);
+                            });
                             // On successful decode, pet the watchdog
                             uarte_wdog.pet();
 
                             match data {
                                 PcToModem::Ping => {
-                                    try_send(uarte_app, &ModemToPc::Pong);
+                                    if try_send(uarte_app, &ModemToPc::Pong).is_err() {
+                                        ctx.resources.blinq2.lock(|b| {
+                                            b.enqueue(patterns::blinks::LONG_ON_OFF);
+                                        });
+                                    }
                                 }
                                 PcToModem::Outgoing { msg, pipe } => {
                                     rprintln!("sending to {}: {:?}", pipe, msg);
                                     esb_app.send(&msg, pipe).unwrap();
+                                    ctx.resources.blinq0.lock(|b| {
+                                        b.enqueue(patterns::blinks::LONG_ON_OFF);
+                                    });
                                 }
                             }
 
@@ -286,6 +365,17 @@ const APP: () = {
                 rgr.release(len);
             }
         }
+    }
+
+    #[task(resources = [blinq0, blinq1, blinq2, blinq3], schedule = [led_periodic])]
+    fn led_periodic(ctx: led_periodic::Context) {
+        ctx.resources.blinq0.step();
+        ctx.resources.blinq1.step();
+        ctx.resources.blinq2.step();
+        ctx.resources.blinq3.step();
+
+
+        ctx.schedule.led_periodic(ctx.scheduled + (timer::SIGNED_TICKS_PER_SECOND / 4)).ok();
     }
 
     #[task(binds = RADIO, resources = [esb_irq], priority = 3)]
@@ -326,6 +416,13 @@ const APP: () = {
     fn uarte0(ctx: uarte0::Context) {
         ctx.resources.uarte_irq.interrupt();
     }
+
+    // Sacrificial hardware interrupts
+    extern "C" {
+        fn SWI1_EGU1();
+    // fn SWI2_EGU2();
+    // fn SWI3_EGU3();
+    }
 };
 
 #[exception]
@@ -336,7 +433,7 @@ unsafe fn DefaultHandler(_irqn: i16) -> ! {
     SCB::sys_reset()
 }
 
-fn try_send(uarte: &mut fleet_uarte::app::UarteApp<U1024, U1024>, msg: &ModemToPc) {
+fn try_send(uarte: &mut fleet_uarte::app::UarteApp<U1024, U1024>, msg: &ModemToPc) -> Result<(), ()> {
     match uarte.write_grant(128) {
         Ok(mut wgr) => {
             let used: usize = to_slice_cobs(&msg, &mut wgr)
@@ -344,9 +441,11 @@ fn try_send(uarte: &mut fleet_uarte::app::UarteApp<U1024, U1024>, msg: &ModemToP
                 .unwrap_or(0);
 
             wgr.commit(used);
+            Ok(())
         }
         Err(e) => {
             rprintln!("uartetxerr: {:?}", e);
+            Err(())
         }
     }
 }

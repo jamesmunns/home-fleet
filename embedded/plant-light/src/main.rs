@@ -26,7 +26,7 @@ use {
     cortex_m_rt::exception,
     esb::{
         consts::*, irq::StatePTX, Addresses, BBBuffer, ConfigBuilder, ConstBBBuffer, Error,
-        EsbBuffer, EsbIrq, IrqTimer,
+        EsbBuffer, EsbIrq, IrqTimer, TxPower,
     },
     fleet_esb::{ptx::FleetRadioPtx, RxMessage},
     fleet_icd::radio::{
@@ -121,7 +121,8 @@ const APP: () = {
         let config = ConfigBuilder::default()
             .wait_for_ack_timeout(1500)
             .retransmit_delay(2000)
-            .maximum_transmit_attempts(3)
+            .tx_power(TxPower::POS4DBM)
+            .maximum_transmit_attempts(16)
             .check()
             .unwrap();
         let (esb_app, esb_irq, esb_timer) = BUFFER
@@ -137,8 +138,8 @@ const APP: () = {
         // the device and the watchdog was previously active
         let (relay_wdog, esb_wdog) = match Watchdog::try_new(ctx.device.WDT) {
             Ok(mut watchdog) => {
-                // Set the watchdog to timeout after 5 seconds (in 32.768kHz ticks)
-                watchdog.set_lfosc_ticks(30 * 32768);
+                // Set the watchdog to timeout after 5 minutes (in 32.768kHz ticks)
+                watchdog.set_lfosc_ticks(5 * 60 * 32768);
 
                 watchdog.run_during_debug_halt(true);
                 watchdog.run_during_sleep(true);

@@ -53,12 +53,14 @@ fn main() -> Result<()> {
         while plant.poll().is_ok() {
             sleep(Duration::from_millis(250));
         }
+        std::process::exit(1);
     });
 
     let modem_hdl = spawn(move || {
         while modem.poll().is_ok() {
             sleep(Duration::from_millis(50));
         }
+        std::process::exit(1);
     });
 
     let rest_hdl = rest::RestCtx::new(plant2);

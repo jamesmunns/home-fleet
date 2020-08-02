@@ -61,6 +61,7 @@ impl CommsCtx {
                                     let comms = self.map.get_mut(&pipe).ok_or(String::from("oh."))?;
                                     comms.tx.send(msg)?;
                                 }
+                                ModemToPc::Pong => {},
                             }
                             remaining
                         }
@@ -68,8 +69,7 @@ impl CommsCtx {
                 }
             }
             Err(ref e) if e.kind() == std::io::ErrorKind::TimedOut => {
-                // print!(".");
-                io::stdout().flush().ok().expect("Could not flush stdout");
+
             }
             Err(e) => {
                 eprintln!("{:?}", e);
