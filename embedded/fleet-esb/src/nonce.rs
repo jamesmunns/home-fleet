@@ -1,4 +1,4 @@
-use crate::{MAGIC_WORD, NONCE_SIZE, Error};
+use crate::{Error, MAGIC_WORD, NONCE_SIZE};
 
 pub struct FleetNonce {
     pub(crate) tick: u32,

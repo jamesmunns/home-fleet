@@ -15,7 +15,7 @@ use core::cmp::min;
 
 use esb::Error as EsbError;
 use postcard::Error as PostcardError;
-use serde::de::DeserializeOwned;
+use serde::de::{Deserialize, DeserializeOwned};
 
 pub mod nonce;
 pub mod prx;
@@ -26,6 +26,7 @@ pub enum Error {
     PacketTooSmol,
     BadNonce,
     InvalidNonce,
+    NoData,
 
     Esb(EsbError),
     Postcard(PostcardError),
@@ -62,6 +63,16 @@ where
 {
     pub msg: T,
     pub meta: MessageMetadata,
+}
+
+#[derive(Debug)]
+pub struct BorrowRxMessage<'de, T>
+where
+    T: 'de + Deserialize<'de>,
+{
+    pub msg: T,
+    pub meta: MessageMetadata,
+    pub(crate) marker: core::marker::PhantomData<&'de ()>,
 }
 
 #[derive(Debug)]

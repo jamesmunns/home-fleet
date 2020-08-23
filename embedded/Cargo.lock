@@ -74,9 +74,9 @@ dependencies = [
 
 [[package]]
 name = "bbqueue"
-version = "0.4.8"
+version = "0.4.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "27d38cf39fda7785da8cf182cff9b2195f8b85b0d2d578a4c5d7f322b2158e82"
+checksum = "7fb4913f8b3f9a91610fd5e26bd22640e31ef7eff7c105f79bc8dc6fc8cfc927"
 dependencies = [
  "cortex-m",
  "generic-array 0.13.2",
@@ -229,6 +229,7 @@ dependencies = [
 name = "fleet-esb"
 version = "0.1.0"
 dependencies = [
+ "bbqueue",
  "chacha20poly1305",
  "esb",
  "nrf51-hal 0.11.0",

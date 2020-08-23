@@ -12,6 +12,7 @@ nrf52832-hal = { version = "0.11", features = ["rt"], optional = true }
 nrf52840-hal = { version = "0.11", features = ["rt"], optional = true }
 nrf51-hal = {version = "0.11.0", features = ["rt"], optional = true}
 postcard = "0.5.0"
+bbqueue = "0.4.9"
 
 [dependencies.serde]
 version = "1.0"
