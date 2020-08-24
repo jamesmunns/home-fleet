@@ -17,6 +17,7 @@ use nrf52840_hal as hal;
 
 use anachro_client::Client;
 use anachro_icd::Version;
+use comms::CommsState;
 use {
     blinq::{consts, patterns, Blinq},
     core::{default::Default, sync::atomic::AtomicBool},
@@ -60,6 +61,7 @@ const APP: () = {
         red_led: Blinq<consts::U8, Pin<Output<PushPull>>>,
 
         client: Client,
+        comms_state: CommsState,
     }
 
     #[init(spawn = [relay_periodic, rx_periodic, relay_status, led_periodic])]
@@ -239,6 +241,7 @@ const APP: () = {
             red_led: red,
             green_led: green,
             client,
+            comms_state: CommsState::Connecting(0),
         }
     }
 
@@ -334,7 +337,7 @@ const APP: () = {
     ///
     /// We also also check to see if we haven't heard from the remote device in
     /// a while. If so, we reboot.
-    #[task(schedule = [rx_periodic], spawn = [relay_command], resources = [esb_app, esb_wdog, blue_led])]
+    #[task(schedule = [rx_periodic], spawn = [relay_command], resources = [esb_app, esb_wdog, blue_led, client, comms_state])]
     fn rx_periodic(ctx: rx_periodic::Context) {
         comms::rx_periodic(ctx);
     }
