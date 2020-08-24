@@ -106,15 +106,19 @@ pub fn rx_periodic(ctx: crate::rx_periodic::Context) {
 
     let next = match comms_state {
         CommsState::Connecting(ref n) => {
+            // We are waiting for a connection
             if client.is_connected() {
+                // We are connected! Start subscribing
                 Some(CommsState::Subscribing {
                     attempts: 0,
                     paths_remaining: PATHS,
                 })
             } else if *n >= 100 {
+                // We've waited too long. Try again
                 client.reset_connection();
                 Some(CommsState::Connecting(0))
             } else {
+                // Keep waiting for that connection
                 Some(CommsState::Connecting(n + 1))
             }
         }
@@ -122,8 +126,11 @@ pub fn rx_periodic(ctx: crate::rx_periodic::Context) {
             attempts,
             paths_remaining,
         } => {
+            // Are we waiting for a subscription?
             if !client.is_subscribe_pending() {
+                // No, are there any pending subscriptions?
                 if !paths_remaining.is_empty() {
+                    // Yup! 'pop' the first item off the list, subscribe, and start waiting
                     let outgoing = client
                         .subscribe(PubSubPath::Long(ManagedString::Borrow(paths_remaining[0])))
                         .unwrap();
@@ -134,6 +141,7 @@ pub fn rx_periodic(ctx: crate::rx_periodic::Context) {
                         paths_remaining: &paths_remaining[1..],
                     })
                 } else {
+                    // No pending, no remaining, we're good to go!
                     Some(CommsState::Steady)
                 }
             } else {
@@ -147,10 +155,13 @@ pub fn rx_periodic(ctx: crate::rx_periodic::Context) {
                     })
                 }
             }
-
         }
-        CommsState::Steady => todo!(),
+        CommsState::Steady => None,
     };
+
+    if let Some(state) = next {
+        *comms_state = state;
+    }
 
     // 'rx: loop {
     //     let msg = esb_app.receive();
