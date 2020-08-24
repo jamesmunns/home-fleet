@@ -19,6 +19,13 @@ nrf51-hal = {version = "0.11.0", features = ["rt"], optional = true}
 
 blinq = "0.1"
 
+anachro-icd = "0.1"
+
+[dependencies.anachro-client]
+# git = "https://github.com/jamesmunns/anachro"
+# rev = "b5efb63e1f750d026b7c37400c63b8e612be6d6b"
+path = "/home/james/anachro/anachro-client"
+
 [dependencies.esb]
 version = "0.1.0"
 features = ["fast-ru"]

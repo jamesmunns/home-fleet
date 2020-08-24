@@ -1,4 +1,4 @@
-use crate::hal::gpio::{OpenDrain, Output, Pin, Level, OpenDrainConfig};
+use crate::hal::gpio::{Level, OpenDrain, OpenDrainConfig, Output, Pin};
 use crate::timer::TICKS_PER_SECOND;
 use embedded_hal::digital::v2::OutputPin;
 use embedded_hal::digital::v2::StatefulOutputPin;
@@ -40,10 +40,14 @@ where
         let [pin_0, pin_1, pin_2, pin_3] = pins;
 
         // Make sure all pins are off at startup
-        let pin_0 = pin_0.into_open_drain_output(OpenDrainConfig::HighDrive0Disconnect1, Level::High);
-        let pin_1 = pin_1.into_open_drain_output(OpenDrainConfig::HighDrive0Disconnect1, Level::High);
-        let pin_2 = pin_2.into_open_drain_output(OpenDrainConfig::HighDrive0Disconnect1, Level::High);
-        let pin_3 = pin_3.into_open_drain_output(OpenDrainConfig::HighDrive0Disconnect1, Level::High);
+        let pin_0 =
+            pin_0.into_open_drain_output(OpenDrainConfig::HighDrive0Disconnect1, Level::High);
+        let pin_1 =
+            pin_1.into_open_drain_output(OpenDrainConfig::HighDrive0Disconnect1, Level::High);
+        let pin_2 =
+            pin_2.into_open_drain_output(OpenDrainConfig::HighDrive0Disconnect1, Level::High);
+        let pin_3 =
+            pin_3.into_open_drain_output(OpenDrainConfig::HighDrive0Disconnect1, Level::High);
 
         Self {
             relays: [
@@ -63,7 +67,8 @@ where
             RelayIdx::Relay1 => self.relays.get_mut(1),
             RelayIdx::Relay2 => self.relays.get_mut(2),
             RelayIdx::Relay3 => self.relays.get_mut(3),
-        }.ok_or(())?;
+        }
+        .ok_or(())?;
 
         let now = self.timer.get_current_tick();
         let delta = now.wrapping_sub(relay.last_toggle_tick);
