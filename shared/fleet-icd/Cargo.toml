@@ -7,8 +7,12 @@ edition = "2018"
 [dependencies]
 generic-array = "0.14.2"
 postcard = "0.5.0"
+anachro-icd = "0.1"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[dependencies.anachro-client]
+# git = "https://github.com/jamesmunns/anachro"
+# rev = "b5efb63e1f750d026b7c37400c63b8e612be6d6b"
+path = "/home/james/anachro/anachro-client"
 
 [dependencies.serde]
 version = "1.0.111"

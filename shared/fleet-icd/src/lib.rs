@@ -2,6 +2,7 @@
 
 pub mod modem;
 pub mod radio;
+pub mod radio2;
 
 pub use generic_array::{ArrayLength, GenericArray};
 pub use generic_array::typenum::consts;

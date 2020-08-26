@@ -77,7 +77,6 @@ impl Into<usize> for RelayIdx {
 }
 
 impl TryFrom<usize> for RelayIdx {
-    // fn try_from(other: &usize) -> Result<
     type Error = ();
 
     fn try_from(other: usize) -> core::result::Result<Self, Self::Error> {

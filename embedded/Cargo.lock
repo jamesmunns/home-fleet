@@ -51,6 +51,7 @@ name = "anachro-client"
 version = "0.1.0"
 dependencies = [
  "anachro-icd",
+ "postcard",
 ]
 
 [[package]]
@@ -287,6 +288,8 @@ dependencies = [
 name = "fleet-icd"
 version = "0.1.0"
 dependencies = [
+ "anachro-client",
+ "anachro-icd",
  "generic-array 0.14.2",
  "postcard",
  "serde",
@@ -629,6 +632,7 @@ dependencies = [
  "fleet-esb",
  "fleet-icd",
  "fleet-keys",
+ "heapless",
  "nrf51-hal 0.11.0",
  "nrf52810-hal 0.11.0",
  "nrf52832-hal 0.11.0",

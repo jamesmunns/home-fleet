@@ -7,6 +7,7 @@ use {
     esb::consts::*,
     fleet_esb::{ptx::FleetRadioPtx, RxMessage},
     fleet_icd::radio::{DeviceToHost, GeneralDeviceMessage, HostToDevice},
+    fleet_icd::radio2::PlantLightTable,
     rtt_target::rprintln,
 };
 
@@ -15,7 +16,7 @@ fn process_one(
     radio: &mut FleetRadioPtx<U2048, U2048, RollingRtcTimer>,
     client: &mut Client,
     msg: Option<Arbitrator>,
-) -> Result<(), ()> {
+) -> Result<Option<PlantLightTable>, ()> {
     let x = match client.process(&msg) {
         Ok(m) => m,
         Err(_e) => {
@@ -26,23 +27,25 @@ fn process_one(
 
     if let Some(bmsg) = x.broker_response {
         rprintln!("Sending {:?}", bmsg);
-        radio.send(&bmsg, 0).unwrap();
+        radio.send(&bmsg, 0).map_err(drop)?;
     }
 
     if let Some(cmsg) = x.client_response {
-        // TODO: I need some sort of way to handle things here,
-        // probably deserializing to Owned data in some regard.
-        // Return a Vec of plantlight messages?
-        rprintln!("'{:?}': '{:?}'", cmsg.path, cmsg.payload);
+        Ok(PlantLightTable::from_pub_sub(cmsg).ok())
+    } else {
+        Ok(None)
     }
-
-    Ok(())
 }
 
-fn processor(
+use heapless::{ArrayLength, Vec, consts};
+
+fn processor<N>(
     radio: &mut FleetRadioPtx<U2048, U2048, RollingRtcTimer>,
     client: &mut Client,
-) -> Result<(), ()> {
+) -> Result<Vec<PlantLightTable, N>, ()>
+where
+    N: ArrayLength<PlantLightTable>,
+{
     let timer = RollingRtcTimer::new();
 
     let mut proc_flag = false;
@@ -75,7 +78,7 @@ fn processor(
         }
     }
 
-    Ok(())
+    Ok(Vec::new())
 }
 
 pub enum CommsState {
@@ -87,8 +90,6 @@ pub enum CommsState {
     Steady,
 }
 
-static PATHS: &[&str] = &["plants/lights/living-room/+", "time/unix/local"];
-
 pub fn rx_periodic(ctx: crate::rx_periodic::Context) {
     // Roughly 10ms
     const INTERVAL: i32 = crate::timer::SIGNED_TICKS_PER_SECOND / 100;
@@ -99,9 +100,24 @@ pub fn rx_periodic(ctx: crate::rx_periodic::Context) {
     let client = ctx.resources.client;
     let comms_state = ctx.resources.comms_state;
 
-    if let Err(_) = processor(esb_app, client) {
-        client.reset_connection();
-        *comms_state = CommsState::Connecting(0);
+    match processor::<consts::U16>(esb_app, client) {
+        Ok(msgs) => {
+            for msg in msgs {
+                match msg {
+                    PlantLightTable::Relay(cmd) => {
+                        rprintln!("RELAY CMD: {:?}", cmd);
+                    }
+                    PlantLightTable::Time(time) => {
+                        rprintln!("THE TIME IS {}", time);
+                    }
+                }
+            }
+        }
+        Err(e) => {
+            rprintln!("Error: {:?}, resetting connection", e);
+            client.reset_connection();
+            *comms_state = CommsState::Connecting(0);
+        }
     }
 
     let next = match comms_state {
@@ -111,7 +127,7 @@ pub fn rx_periodic(ctx: crate::rx_periodic::Context) {
                 // We are connected! Start subscribing
                 Some(CommsState::Subscribing {
                     attempts: 0,
-                    paths_remaining: PATHS,
+                    paths_remaining: PlantLightTable::paths(),
                 })
             } else if *n >= 100 {
                 // We've waited too long. Try again
@@ -201,3 +217,4 @@ pub fn rx_periodic(ctx: crate::rx_periodic::Context) {
 
     ctx.schedule.rx_periodic(ctx.scheduled + INTERVAL).ok();
 }
+

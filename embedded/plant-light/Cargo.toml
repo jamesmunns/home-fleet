@@ -20,6 +20,7 @@ nrf51-hal = {version = "0.11.0", features = ["rt"], optional = true}
 blinq = "0.1"
 
 anachro-icd = "0.1"
+heapless = "0.5.5"
 
 [dependencies.anachro-client]
 # git = "https://github.com/jamesmunns/anachro"
