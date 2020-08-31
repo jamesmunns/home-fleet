@@ -1,5 +1,5 @@
-use anachro_client::Client;
-use anachro_icd::{arbitrator::Arbitrator, ManagedString, PubSubPath};
+use anachro_client::{Client, ClientIo, ClientError};
+use anachro_icd::{arbitrator::Arbitrator, component::Component, ManagedString, PubSubPath};
 use fleet_esb::{BorrowRxMessage, RollingTimer};
 use {
     crate::timer::RollingRtcTimer,
@@ -11,83 +11,81 @@ use {
     rtt_target::rprintln,
 };
 
-// Todo, this should probably be something trait-y
-fn process_one(
-    radio: &mut FleetRadioPtx<U2048, U2048, RollingRtcTimer>,
-    client: &mut Client,
-    msg: Option<Arbitrator>,
-) -> Result<Option<PlantLightTable>, ()> {
-    let x = match client.process(&msg) {
-        Ok(m) => m,
-        Err(_e) => {
-            rprintln!("sad client :(");
-            return Err(());
-        }
-    };
-
-    if let Some(bmsg) = x.broker_response {
-        rprintln!("Sending {:?}", bmsg);
-        radio.send(&bmsg, 0).map_err(drop)?;
-    }
-
-    if let Some(cmsg) = x.client_response {
-        Ok(PlantLightTable::from_pub_sub(cmsg).ok())
-    } else {
-        Ok(None)
-    }
-}
-
 use heapless::{ArrayLength, Vec, consts};
 
-fn processor<N>(
-    radio: &mut FleetRadioPtx<U2048, U2048, RollingRtcTimer>,
-    client: &mut Client,
-) -> Result<Vec<PlantLightTable, N>, ()>
-where
-    N: ArrayLength<PlantLightTable>,
-{
-    let timer = RollingRtcTimer::new();
+// fn processor<N>(
+//     radio: &mut FleetRadioPtx<U2048, U2048, RollingRtcTimer>,
+//     client: &mut Client,
+// ) -> Result<Vec<PlantLightTable, N>, ()>
+// where
+//     N: ArrayLength<PlantLightTable>,
+// {
+//     let timer = RollingRtcTimer::new();
 
-    let mut proc_flag = false;
+//     let mut proc_flag = false;
 
-    loop {
-        match radio.receive_with() {
-            Ok(mut msg) => {
-                match msg.view_with(|msg: BorrowRxMessage<Arbitrator>| {
-                    let smsg = Some(msg.msg);
-                    process_one(radio, client, smsg).ok();
-                }) {
-                    Ok(()) => {
-                        rprintln!("Successful send!");
-                    }
-                    Err(e) => {
-                        rprintln!("Error send: {:?}", e);
-                    }
-                };
+//     loop {
+//         match radio.receive_with() {
+//             Ok(mut msg) => {
+//                 msg.view_with(|msg: BorrowRxMessage<Arbitrator>| {
+//                     let smsg = Some(msg.msg);
+//                     process_one(radio, client, smsg).ok();
+//                 }).map_err(drop)?;
 
-                // TODO
-                msg.fgr.release();
-                proc_flag = true;
-            }
-            Err(_) if !proc_flag => {
-                let smsg = None;
-                process_one(radio, client, smsg).ok();
-                break;
-            }
-            Err(_) => break,
-        }
-    }
+//                 proc_flag = true;
+//             }
+//             Err(_) if !proc_flag => {
+//                 let smsg = None;
+//                 process_one(radio, client, smsg).ok();
+//                 break;
+//             }
+//             Err(_) => break,
+//         }
+//     }
 
-    Ok(Vec::new())
+//     Ok(Vec::new())
+// }
+
+use fleet_esb::ptx::PayloadR;
+use anachro_client::from_bytes;
+
+struct IoHandler<'a> {
+    esb_app: &'a mut FleetRadioPtx<U2048, U2048, RollingRtcTimer>,
+    rgr: Option<PayloadR<U2048>>,
 }
 
-pub enum CommsState {
-    Connecting(u8),
-    Subscribing {
-        attempts: u8,
-        paths_remaining: &'static [&'static str],
-    },
-    Steady,
+impl<'a> ClientIo for IoHandler<'a> {
+    fn recv(&mut self) -> Result<Option<Arbitrator>, ClientError> {
+        self.drop_grant();
+
+        match self.esb_app.just_gimme_frame() {
+            Ok(msg) => {
+                self.rgr = Some(msg);
+                if let Some(ref msg) = self.rgr {
+                    if let Ok(msg) = from_bytes::<Arbitrator>(msg) {
+                        return Ok(Some(msg));
+                    } else {
+                        return Ok(None)
+                    }
+                } else {
+                    // What?
+                    return Ok(None)
+                }
+            }
+            Err(_) => {
+                return Ok(None)
+            }
+        }
+    }
+    fn send(&mut self, msg: &Component) -> Result<(), ClientError> {
+        self.esb_app.send(msg, 0).map_err(|_| ClientError::OutputFull)
+    }
+}
+
+impl<'a> IoHandler<'a> {
+    pub fn drop_grant(&mut self) {
+        let _ = self.rgr.take();
+    }
 }
 
 pub fn rx_periodic(ctx: crate::rx_periodic::Context) {
@@ -98,115 +96,23 @@ pub fn rx_periodic(ctx: crate::rx_periodic::Context) {
 
     let esb_app = ctx.resources.esb_app;
     let client = ctx.resources.client;
-    let comms_state = ctx.resources.comms_state;
 
-    match processor::<consts::U16>(esb_app, client) {
-        Ok(msgs) => {
-            for msg in msgs {
-                match msg {
-                    PlantLightTable::Relay(cmd) => {
-                        rprintln!("RELAY CMD: {:?}", cmd);
-                    }
-                    PlantLightTable::Time(time) => {
-                        rprintln!("THE TIME IS {}", time);
-                    }
-                }
-            }
-        }
-        Err(e) => {
-            rprintln!("Error: {:?}, resetting connection", e);
-            client.reset_connection();
-            *comms_state = CommsState::Connecting(0);
-        }
-    }
-
-    let next = match comms_state {
-        CommsState::Connecting(ref n) => {
-            // We are waiting for a connection
-            if client.is_connected() {
-                // We are connected! Start subscribing
-                Some(CommsState::Subscribing {
-                    attempts: 0,
-                    paths_remaining: PlantLightTable::paths(),
-                })
-            } else if *n >= 100 {
-                // We've waited too long. Try again
-                client.reset_connection();
-                Some(CommsState::Connecting(0))
-            } else {
-                // Keep waiting for that connection
-                Some(CommsState::Connecting(n + 1))
-            }
-        }
-        CommsState::Subscribing {
-            attempts,
-            paths_remaining,
-        } => {
-            // Are we waiting for a subscription?
-            if !client.is_subscribe_pending() {
-                // No, are there any pending subscriptions?
-                if !paths_remaining.is_empty() {
-                    // Yup! 'pop' the first item off the list, subscribe, and start waiting
-                    let outgoing = client
-                        .subscribe(PubSubPath::Long(ManagedString::Borrow(paths_remaining[0])))
-                        .unwrap();
-                    esb_app.send(&outgoing, 0).unwrap();
-
-                    Some(CommsState::Subscribing {
-                        attempts: 0,
-                        paths_remaining: &paths_remaining[1..],
-                    })
-                } else {
-                    // No pending, no remaining, we're good to go!
-                    Some(CommsState::Steady)
-                }
-            } else {
-                if *attempts >= 100 {
-                    client.reset_connection();
-                    Some(CommsState::Connecting(0))
-                } else {
-                    Some(CommsState::Subscribing {
-                        attempts: *attempts + 1,
-                        paths_remaining,
-                    })
-                }
-            }
-        }
-        CommsState::Steady => None,
+    let mut io = IoHandler {
+        esb_app,
+        rgr: None,
     };
 
-    if let Some(state) = next {
-        *comms_state = state;
+    match client.process_one::<_, PlantLightTable>(&mut io) {
+        Ok(Some(msg)) => {
+            rprintln!("GOT {:?}", msg);
+        },
+        Ok(None) => {},
+        Err(e) => {
+            rprintln!("ERR: {:?}", e);
+        },
     }
 
-    // 'rx: loop {
-    //     let msg = esb_app.receive();
-
-    //     // Got a message? Pet the dog.
-    //     if let Ok(Some(_)) = &msg {
-    //         ctx.resources.esb_wdog.pet();
-    //         ctx.resources
-    //             .blue_led
-    //             .enqueue(patterns::blinks::LONG_ON_OFF);
-    //     }
-
-    //     match msg {
-    //         Ok(None) => break 'rx,
-    //         Ok(Some(RxMessage {
-    //             msg: HostToDevice::PlantLight(m),
-    //             ..
-    //         })) => match ctx.spawn.relay_command(m) {
-    //             Ok(_) => {}
-    //             Err(e) => rprintln!("spawn err: {:?}", e),
-    //         },
-    //         Ok(Some(m)) => {
-    //             rprintln!("Got unproc'd msg: {:?}", m);
-    //         }
-    //         Err(e) => {
-    //             rprintln!("RxErr: {:?}", e);
-    //         }
-    //     }
-    // }
+    io.drop_grant();
 
     if esb_app.ticks_since_last_tx() > POLL_PRX_INTERVAL {
         match esb_app.send(&(), 0) {

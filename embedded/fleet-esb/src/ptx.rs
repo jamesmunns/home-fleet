@@ -1,4 +1,4 @@
-use esb::payload::PayloadR;
+pub use esb::payload::PayloadR;
 use esb::{ArrayLength, EsbApp, EsbHeader};
 
 use serde::{de::DeserializeOwned, Serialize};
@@ -157,15 +157,19 @@ where
         }
     }
 
-    pub fn receive_with(&mut self) -> Result<GrantWrap<IncomingLen>, Error> {
+    pub fn just_gimme_frame(&mut self) -> Result<PayloadR<IncomingLen>, Error> {
         let mut frame = loop {
-            match self.app.read_packet() {
+            let pkt = self.app.read_packet().map(|mut frame| {
+                frame.auto_release(true);
+                frame
+            });
+
+            match pkt {
                 // No packet ready
                 None => return Err(Error::NoData),
 
                 // Empty ACK, release and get the next packet
                 Some(pkt) if pkt.payload_len() == 0 => {
-                    pkt.release();
                     continue;
                 }
 
@@ -177,28 +181,15 @@ where
         };
 
         if frame.payload_len() <= MIN_CRYPT_SIZE {
-            frame.release();
             return Err(Error::PacketTooSmol);
         }
 
         let len = frame.payload_len();
         let (payload, nonce_bytes) = frame.split_at_mut(len - NONCE_SIZE);
-        let fleet_nonce = match FleetNonce::try_from_bytes(nonce_bytes) {
-            Ok(nonce) => nonce,
-            Err(e) => {
-                frame.release();
-                return Err(e.into());
-            }
-        };
+        let fleet_nonce = FleetNonce::try_from_bytes(nonce_bytes)?;
 
         // Nonce check!
-        match self.check_nonce_and_update(&fleet_nonce) {
-            Ok(_) => {}
-            Err(e) => {
-                frame.release();
-                return Err(e);
-            }
-        };
+        self.check_nonce_and_update(&fleet_nonce)?;
 
         let ga_nonce = GenericArray::from_slice(nonce_bytes);
         let mut buf = LilBuf {
@@ -206,14 +197,13 @@ where
             buf: payload,
         };
 
-        match self.crypt.decrypt_in_place(ga_nonce, b"", &mut buf) {
-            Ok(_) => {}
-            Err(e) => {
-                frame.release();
-                return Err(e.into());
-            }
-        }
+        self.crypt.decrypt_in_place(ga_nonce, b"", &mut buf)?;
 
+        Ok(frame)
+    }
+
+    pub fn receive_with(&mut self) -> Result<GrantWrap<IncomingLen>, Error> {
+        let frame = self.just_gimme_frame()?;
         Ok(GrantWrap { fgr: frame })
     }
 
@@ -262,8 +252,7 @@ pub struct GrantWrap<N>
 where
     N: ArrayLength<u8>,
 {
-    // TODO
-    pub fgr: PayloadR<N>,
+    fgr: PayloadR<N>,
 }
 
 impl<N> GrantWrap<N>

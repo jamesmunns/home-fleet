@@ -30,6 +30,7 @@ path = "/home/james/anachro/anachro-client"
 [dependencies.esb]
 version = "0.1.0"
 features = ["fast-ru"]
+path = "../../../../personal/esb"
 
 [dependencies.fleet-icd]
 version = "0.1.0"

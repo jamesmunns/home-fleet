@@ -23,4 +23,5 @@ debug-assertions = true
 
 [patch.crates-io]
 # nrf-hal-common = { git = "https://github.com/nrf-rs/nrf-hal.git", rev = "4ce15251a0afd1dbddfbcd6d6e3225a9b2fc262e" }
-# esb = { path = "../../esb" }
+esb = { path = "../../../personal/esb" }
+anachro-icd = { path = "/home/james/anachro/anachro-icd" }

@@ -17,7 +17,6 @@ use nrf52840_hal as hal;
 
 use anachro_client::Client;
 use anachro_icd::Version;
-use comms::CommsState;
 use {
     blinq::{consts, patterns, Blinq},
     core::{default::Default, sync::atomic::AtomicBool},
@@ -29,6 +28,7 @@ use {
     },
     fleet_esb::ptx::FleetRadioPtx,
     fleet_icd::radio::{DeviceToHost, PlantLightDeviceMessage, PlantLightHostMessage},
+    fleet_icd::radio2::PlantLightTable,
     fleet_keys::keys::KEY,
     hal::{
         clocks::LfOscConfiguration,
@@ -61,7 +61,6 @@ const APP: () = {
         red_led: Blinq<consts::U8, Pin<Output<PushPull>>>,
 
         client: Client,
-        comms_state: CommsState,
     }
 
     #[init(spawn = [relay_periodic, rx_periodic, relay_status, led_periodic])]
@@ -226,6 +225,9 @@ const APP: () = {
                 misc: 222,
             },
             rng.random_u16(),
+            PlantLightTable::sub_paths(),
+            PlantLightTable::pub_paths(),
+            Some(100),
         );
 
         init::LateResources {
@@ -241,7 +243,6 @@ const APP: () = {
             red_led: red,
             green_led: green,
             client,
-            comms_state: CommsState::Connecting(0),
         }
     }
 
@@ -337,7 +338,7 @@ const APP: () = {
     ///
     /// We also also check to see if we haven't heard from the remote device in
     /// a while. If so, we reboot.
-    #[task(schedule = [rx_periodic], spawn = [relay_command], resources = [esb_app, esb_wdog, blue_led, client, comms_state])]
+    #[task(schedule = [rx_periodic], spawn = [relay_command], resources = [esb_app, esb_wdog, blue_led, client])]
     fn rx_periodic(ctx: rx_periodic::Context) {
         comms::rx_periodic(ctx);
     }
