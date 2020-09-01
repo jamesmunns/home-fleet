@@ -64,6 +64,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "anachro-server"
+version = "0.1.0"
+dependencies = [
+ "anachro-icd",
+ "heapless",
+]
+
+[[package]]
 name = "as-slice"
 version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -596,11 +604,13 @@ dependencies = [
 name = "pc-modem"
 version = "0.0.1"
 dependencies = [
+ "anachro-icd",
+ "anachro-server",
  "bbqueue",
  "blinq",
  "cortex-m",
  "cortex-m-rt",
- "cortex-m-rtfm",
+ "cortex-m-rtic",
  "embedded-hal",
  "esb",
  "fleet-esb",
@@ -635,6 +645,7 @@ dependencies = [
  "nrf52832-hal 0.11.0",
  "nrf52840-hal 0.11.0",
  "panic-persist",
+ "postcard",
  "rtt-target",
 ]
 
@@ -649,9 +660,9 @@ dependencies = [
 
 [[package]]
 name = "postcard"
-version = "0.5.0"
+version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d2ba083a6a640a9f09d294c0f504acdd7a2b000c179e80c73d4b7a036bfd8164"
+checksum = "b3e3f5c2e9a91383c6594ec68aa2dfdfe19a3c86f34b088ba7203f2483d2682f"
 dependencies = [
  "heapless",
  "postcard-cobs",

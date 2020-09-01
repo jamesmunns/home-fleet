@@ -1,6 +1,6 @@
 use core::sync::atomic::{AtomicU32, Ordering};
 use fleet_esb::RollingTimer;
-use rtfm::{Fraction, Monotonic};
+use rtic::{Fraction, Monotonic};
 
 // pub const TICKS_PER_SECOND: u32 = 32768;
 pub const SIGNED_TICKS_PER_SECOND: i32 = 32768;

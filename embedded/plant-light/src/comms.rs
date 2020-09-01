@@ -1,4 +1,4 @@
-use anachro_client::{Client, ClientIo, ClientError};
+use anachro_client::{Client, ClientIo, ClientError, RecvMsg};
 use anachro_icd::{arbitrator::Arbitrator, component::Component, ManagedString, PubSubPath};
 use fleet_esb::{BorrowRxMessage, RollingTimer};
 use {
@@ -9,42 +9,10 @@ use {
     fleet_icd::radio::{DeviceToHost, GeneralDeviceMessage, HostToDevice},
     fleet_icd::radio2::PlantLightTable,
     rtt_target::rprintln,
+    postcard::to_slice,
 };
 
 use heapless::{ArrayLength, Vec, consts};
-
-// fn processor<N>(
-//     radio: &mut FleetRadioPtx<U2048, U2048, RollingRtcTimer>,
-//     client: &mut Client,
-// ) -> Result<Vec<PlantLightTable, N>, ()>
-// where
-//     N: ArrayLength<PlantLightTable>,
-// {
-//     let timer = RollingRtcTimer::new();
-
-//     let mut proc_flag = false;
-
-//     loop {
-//         match radio.receive_with() {
-//             Ok(mut msg) => {
-//                 msg.view_with(|msg: BorrowRxMessage<Arbitrator>| {
-//                     let smsg = Some(msg.msg);
-//                     process_one(radio, client, smsg).ok();
-//                 }).map_err(drop)?;
-
-//                 proc_flag = true;
-//             }
-//             Err(_) if !proc_flag => {
-//                 let smsg = None;
-//                 process_one(radio, client, smsg).ok();
-//                 break;
-//             }
-//             Err(_) => break,
-//         }
-//     }
-
-//     Ok(Vec::new())
-// }
 
 use fleet_esb::ptx::PayloadR;
 use anachro_client::from_bytes;
@@ -88,6 +56,40 @@ impl<'a> IoHandler<'a> {
     }
 }
 
+pub fn publish(
+    ctx: crate::publish::Context,
+    msg: &PlantLightTable
+) {
+    let esb_app = ctx.resources.esb_app;
+    let client = ctx.resources.client;
+
+    let mut io = IoHandler {
+        esb_app,
+        rgr: None,
+    };
+
+    let mut buf = [0u8; 128];
+
+    //  TODO - can I do this automatically?
+    let pubby = match msg.serialize(&mut buf) {
+        Ok(pb) => pb,
+        Err(_) => return,
+    };
+
+    match client.publish(
+        &mut io,
+        pubby.path,
+        pubby.buf,
+    ) {
+        Ok(_) => {
+            rprintln!("Sent Pub!")
+        },
+        Err(_) => {
+            rprintln!("Pub Send Error!")
+        },
+    }
+}
+
 pub fn rx_periodic(ctx: crate::rx_periodic::Context) {
     // Roughly 10ms
     const INTERVAL: i32 = crate::timer::SIGNED_TICKS_PER_SECOND / 100;
@@ -103,6 +105,10 @@ pub fn rx_periodic(ctx: crate::rx_periodic::Context) {
     };
 
     match client.process_one::<_, PlantLightTable>(&mut io) {
+        Ok(Some(RecvMsg { payload: PlantLightTable::Relay(cmd), .. })) => {
+            rprintln!("Set relay!");
+            ctx.spawn.relay_command(cmd).ok();
+        }
         Ok(Some(msg)) => {
             rprintln!("GOT {:?}", msg);
         },

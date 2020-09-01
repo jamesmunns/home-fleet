@@ -28,7 +28,7 @@ use {
     },
     fleet_esb::ptx::FleetRadioPtx,
     fleet_icd::radio::{DeviceToHost, PlantLightDeviceMessage, PlantLightHostMessage},
-    fleet_icd::radio2::PlantLightTable,
+    fleet_icd::radio2::{PlantLightTable, RelayCommand},
     fleet_keys::keys::KEY,
     hal::{
         clocks::LfOscConfiguration,
@@ -107,7 +107,13 @@ const APP: () = {
             radio_to_app_buf: BBBuffer(ConstBBBuffer::new()),
             timer_flag: AtomicBool::new(false),
         };
-        let addresses = Addresses::default();
+        let addresses = Addresses::new(
+            [0xE7, 0xE7, 0xE7, 0xE7], // default
+            [0xC2, 0xC2, 0xC2, 0xC2], // default
+            [0xE7, 0xC2, 0xC3, 0xC4], // default
+            [0xC5, 0xC6, 0xC7, 0xC8], // default
+            8,                        // default: 2
+        ).unwrap();
         let config = ConfigBuilder::default()
             .wait_for_ack_timeout(1500)
             .retransmit_delay(2000)
@@ -301,9 +307,17 @@ const APP: () = {
             .ok();
     }
 
+    #[task(resources = [esb_app, client], capacity = 5)]
+    fn publish(ctx: publish::Context, msg: PlantLightTable) {
+        comms::publish(
+            ctx,
+            &msg
+        );
+    }
+
     /// This software event fires periodically, sending the current status
     /// of the relays over the radio
-    #[task(schedule = [relay_status], resources = [relays, esb_app, relay_wdog, red_led])]
+    #[task(schedule = [relay_status], spawn = [publish], resources = [relays, esb_app, relay_wdog, red_led])]
     fn relay_status(ctx: relay_status::Context) {
         const INTERVAL: i32 = timer::SIGNED_TICKS_PER_SECOND * 3;
 
@@ -314,8 +328,8 @@ const APP: () = {
             .enqueue(patterns::blinks::MEDIUM_ON_OFF);
 
         let stat = ctx.resources.relays.current_state();
-        let msg = DeviceToHost::PlantLight(PlantLightDeviceMessage::Status(stat));
-        ctx.resources.esb_app.send(&msg, 0).ok();
+        let msg = PlantLightTable::Status(stat);
+        ctx.spawn.publish(msg).ok();
 
         ctx.schedule.relay_status(ctx.scheduled + INTERVAL).ok();
     }
@@ -345,10 +359,8 @@ const APP: () = {
 
     /// This software event is triggered whenever a relay message arrives
     #[task(resources = [relays], capacity = 5)]
-    fn relay_command(ctx: relay_command::Context, cmd: PlantLightHostMessage) {
-        if let PlantLightHostMessage::SetRelay { relay, state } = cmd {
-            ctx.resources.relays.set_relay(relay, state).ok();
-        }
+    fn relay_command(ctx: relay_command::Context, cmd: RelayCommand) {
+        ctx.resources.relays.set_relay(cmd.relay, cmd.state).ok();
     }
 
     // Sacrificial hardware interrupts

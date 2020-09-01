@@ -7,7 +7,8 @@ protocol = "Swd"
 # speed = 1337
 # probe_selector = "1366:0105:000760008073"
 # probe_selector = "1366:0105:000760000875"
-# probe_selector = "1366:0101:000308621590"
+usb_vid = "0483"
+usb_pid = "3748"
 
 [default.flashing]
 # Whether or not the target should be flashed.

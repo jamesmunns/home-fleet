@@ -21,6 +21,7 @@ blinq = "0.1"
 
 anachro-icd = "0.1"
 heapless = "0.5.5"
+postcard = "0.5.1"
 
 [dependencies.anachro-client]
 # git = "https://github.com/jamesmunns/anachro"

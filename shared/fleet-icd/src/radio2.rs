@@ -28,8 +28,8 @@ use crate::radio::{
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct RelayCommand {
-    relay: RelayIdx,
-    state: RelayState,
+    pub relay: RelayIdx,
+    pub state: RelayState,
 }
 
 pubsub_table!(

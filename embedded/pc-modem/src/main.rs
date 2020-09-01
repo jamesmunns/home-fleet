@@ -10,7 +10,7 @@ use {
     cortex_m_rt::exception,
     esb::{
         consts::*, irq::StatePRX, Addresses, BBBuffer, ConfigBuilder, ConstBBBuffer, Error, EsbBuffer,
-        EsbIrq, IrqTimer, TxPower,
+        EsbIrq, IrqTimer, TxPower, EsbApp, EsbHeader,
     },
     hal::{
         clocks::LfOscConfiguration,
@@ -23,17 +23,24 @@ use {
     rtt_target::{rprintln, rtt_init_print},
 };
 
-use fleet_esb::{prx::FleetRadioPrx, RxMessage};
+use fleet_esb::{prx::FleetRadioPrx, RxMessage, BorrowRxMessage};
 use fleet_icd::{
-    modem::{ModemToPc, PcToModem},
-    radio::{DeviceToHost, GeneralDeviceMessage, HostToDevice},
-    Buffer as CobsBuffer, FeedResult,
+    Buffer as CobsBuffer, WithResult,
+};
+use anachro_icd::{
+    component::Component,
+    arbitrator::Arbitrator,
+    Uuid,
+};
+use anachro_server::{
+    Request,
+    Response,
 };
 use fleet_keys::keys::KEY;
 
 use fleet_uarte;
 
-use postcard::to_slice_cobs;
+use postcard::{to_slice_cobs, from_bytes, to_slice};
 
 mod timer;
 
@@ -50,10 +57,10 @@ static BUFFER: EsbBuffer<U8192, U8192> = EsbBuffer {
     timer_flag: AtomicBool::new(false),
 };
 
-#[rtfm::app(device = crate::hal::pac, peripherals = true, monotonic = crate::timer::RollingRtcTimer)]
+#[rtic::app(device = crate::hal::pac, peripherals = true, monotonic = crate::timer::RollingRtcTimer)]
 const APP: () = {
     struct Resources {
-        esb_app: FleetRadioPrx<U8192, U8192, HostToDevice, DeviceToHost>,
+        esb_app: FleetRadioPrx<U8192, U8192>,
         esb_irq: EsbIrq<U8192, U8192, TIMER0, StatePRX>,
         esb_timer: IrqTimer<TIMER0>,
         esb_wdog: WatchdogHandle<HdlN>,
@@ -85,7 +92,14 @@ const APP: () = {
 
         let uart = ctx.device.UARTE0;
 
-        let addresses = Addresses::default();
+        let addresses = Addresses::new(
+            [0xE7, 0xE7, 0xE7, 0xE7], // default
+            [0xC2, 0xC2, 0xC2, 0xC2], // default
+            [0xE7, 0xC2, 0xC3, 0xC4], // default
+            [0xC5, 0xC6, 0xC7, 0xC8], // default
+            8,                        // default: 2
+        ).unwrap();
+
         let config = ConfigBuilder::default()
             .tx_power(TxPower::POS4DBM)
             .check()
@@ -254,45 +268,74 @@ const APP: () = {
         let cobs_buf = ctx.resources.cobs_buf;
         let uarte_wdog = ctx.resources.uarte_wdog;
         let esb_wdog = ctx.resources.esb_wdog;
+        let mut blinq2 = ctx.resources.blinq2;
+
+        let mut broker = anachro_server::Broker::default();
+
+        let uarte_uuid = Uuid::from_bytes([
+            0x01, 0x02, 0x03, 0x04,
+            0x01, 0x02, 0x03, 0x04,
+            0x01, 0x02, 0x03, 0x04,
+            0x01, 0x02, 0x03, 0x04,
+        ]);
+
+        let pipe0_uuid = Uuid::from_bytes([
+            0x04, 0x04, 0x04, 0x04,
+            0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00,
+        ]);
 
         rprintln!("Start!");
 
+        broker.register_client(&uarte_uuid).unwrap();
+        broker.register_client(&pipe0_uuid).unwrap();
+
         loop {
-            let rx = esb_app.receive();
+            let rx = esb_app.receive_with();
 
-            if let &Ok(Some(_)) = &rx {
-                // Got a message? Pet the dog
-                esb_wdog.pet();
-            }
+            if let Ok(mut msg) = rx {
+                let _ = msg.view_with(|msg: BorrowRxMessage<Component>| {
+                    let source = match msg.meta.pipe {
+                        0 => pipe0_uuid.clone(),
+                        i => {
+                            rprintln!("pipe {}?", i);
+                            return;
+                        },
+                    };
 
-            // Check for radio messages
-            match rx {
-                Ok(Some(RxMessage {
-                    msg: DeviceToHost::General(GeneralDeviceMessage::InitializeSession),
-                    ..
-                })) => {
-                    // Ignore
-                }
-                Ok(Some(msg)) => {
-                    ctx.resources.blinq0.lock(|b| {
-                        b.enqueue(patterns::blinks::SHORT_ON_OFF);
-                    });
-                    if try_send(uarte_app, &ModemToPc::Incoming {
-                        pipe: msg.meta.pipe,
+                    // Decoded a wireless message - pet the dog
+                    esb_wdog.pet();
+
+                    rprintln!("Processing {:?}", msg.msg);
+
+                    match broker.process_msg(&Request {
+                        source,
                         msg: msg.msg,
-                    }).is_err() {
-                        ctx.resources.blinq2.lock(|b| {
-                            b.enqueue(patterns::blinks::LONG_ON_OFF);
-                        });
+                    }) {
+                        Ok(responses) => {
+                            for resp in responses.iter() {
+                                match resp.dest {
+                                    x if x == pipe0_uuid => {
+                                        esb_app.send(&resp.msg, 0).ok();
+                                    }
+                                    x if x == uarte_uuid => {
+                                        try_send(uarte_app, &resp.msg).ok();
+                                    }
+                                    _ => {
+                                        rprintln!("WHO DAT");
+                                    }
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            rprintln!("Process error: {:?}", e);
+                        }
                     }
-                }
-                Ok(None) => {}
-                Err(e) => {
-                    ctx.resources.blinq3.lock(|b| {
-                        b.enqueue(patterns::blinks::LONG_ON_OFF);
-                    });
-                    rprintln!("rxerr: {:?}", e);
-                }
+                });
+
+                // TODO
+                msg.fgr.release();
             }
 
             // Check for uart messages
@@ -302,9 +345,35 @@ const APP: () = {
                     if buf.is_empty() {
                         break;
                     }
-                    match cobs_buf.feed::<PcToModem>(buf) {
+                    match cobs_buf.feed_with(buf, |msg: Component| {
+                        rprintln!("From the UARTE: {:?}", msg);
+                        if let Ok(msgs) = broker.process_msg(&Request {
+                            msg,
+                            source: uarte_uuid.clone(),
+                        }) {
+                            rprintln!("Got {} messages in return", msgs.len());
+                            for msg in msgs {
+                                if msg.dest == uarte_uuid {
+                                    rprintln!("TO THE UARTE: {:?};{:?}", msg.dest, msg.msg);
+                                    // Send it to uarte
+                                    if try_send(uarte_app, &msg.msg).is_err() {
+                                        blinq2.lock(|b| {
+                                            b.enqueue(patterns::blinks::LONG_ON_OFF);
+                                        });
+                                    }
+                                } else if msg.dest == pipe0_uuid {
+                                    rprintln!("TO THE RADIO: {:?};{:?}", msg.dest, msg.msg);
+                                    esb_app.send(&msg.msg, 0).ok();
+                                } else {
+                                    rprintln!("TO ???");
+                                }
+                            }
+                        } else {
+                            rprintln!("broker said :(");
+                        }
+                    }) {
                         // Consumed all data, still pending
-                        FeedResult::Consumed => {
+                        WithResult::Consumed => {
                             ctx.resources.blinq1.lock(|b| {
                                 b.enqueue(patterns::blinks::MEDIUM_ON_OFF);
                             });
@@ -312,7 +381,7 @@ const APP: () = {
                         },
 
                         // Buffer was filled. Contains remaining section of input, if any
-                        FeedResult::OverFull(new_buf) => {
+                        WithResult::OverFull(new_buf) => {
                             ctx.resources.blinq1.lock(|b| {
                                 b.enqueue(patterns::blinks::SHORT_ON_OFF);
                             });
@@ -322,7 +391,7 @@ const APP: () = {
 
                         // Reached end of chunk, but deserialization failed. Contains
                         // remaining section of input, if any
-                        FeedResult::DeserError(new_buf) => {
+                        WithResult::DeserError(new_buf) => {
                             ctx.resources.blinq1.lock(|b| {
                                 b.enqueue(patterns::blinks::SHORT_ON_OFF);
                             });
@@ -332,29 +401,14 @@ const APP: () = {
 
                         // Deserialization complete. Contains deserialized data and
                         // remaining section of input, if any
-                        FeedResult::Success { data, remaining } => {
+                        WithResult::SuccessWith { result, remaining } => {
                             ctx.resources.blinq1.lock(|b| {
                                 b.enqueue(patterns::blinks::LONG_ON_OFF);
                             });
                             // On successful decode, pet the watchdog
                             uarte_wdog.pet();
 
-                            match data {
-                                PcToModem::Ping => {
-                                    if try_send(uarte_app, &ModemToPc::Pong).is_err() {
-                                        ctx.resources.blinq2.lock(|b| {
-                                            b.enqueue(patterns::blinks::LONG_ON_OFF);
-                                        });
-                                    }
-                                }
-                                PcToModem::Outgoing { msg, pipe } => {
-                                    rprintln!("sending to {}: {:?}", pipe, msg);
-                                    esb_app.send(&msg, pipe).unwrap();
-                                    ctx.resources.blinq0.lock(|b| {
-                                        b.enqueue(patterns::blinks::LONG_ON_OFF);
-                                    });
-                                }
-                            }
+                            rprintln!("Success said: {:?}", result);
 
                             buf = remaining;
                         }
@@ -433,7 +487,7 @@ unsafe fn DefaultHandler(_irqn: i16) -> ! {
     SCB::sys_reset()
 }
 
-fn try_send(uarte: &mut fleet_uarte::app::UarteApp<U1024, U1024>, msg: &ModemToPc) -> Result<(), ()> {
+fn try_send(uarte: &mut fleet_uarte::app::UarteApp<U1024, U1024>, msg: &Arbitrator) -> Result<(), ()> {
     match uarte.write_grant(128) {
         Ok(mut wgr) => {
             let used: usize = to_slice_cobs(&msg, &mut wgr)

@@ -155,15 +155,17 @@ where
         }
     }
 
-    pub fn receive_with(&mut self) -> Result<GrantWrap<IncomingLen>, Error> {
+    pub fn just_gimme_frame(&mut self) -> Result<PayloadR<IncomingLen>, Error> {
         let mut frame = loop {
-            match self.app.read_packet() {
+            match self.app.read_packet().map(|mut frame| {
+                frame.auto_release(true);
+                frame
+            }) {
                 // No packet ready
                 None => return Err(Error::NoData),
 
                 // Empty ACK, release and get the next packet
                 Some(pkt) if pkt.payload_len() == 0 => {
-                    pkt.release();
                     continue;
                 }
 
@@ -178,20 +180,13 @@ where
         // header (and a 1 byte payload). Release packet and
         // return error
         if frame.payload_len() <= MIN_CRYPT_SIZE {
-            frame.release();
             return Err(Error::PacketTooSmol);
         }
 
         let len = frame.payload_len();
         let payload_len = len - NONCE_SIZE;
         let (payload, nonce_bytes) = frame.split_at_mut(payload_len);
-        let fleet_nonce = match FleetNonce::try_from_bytes(nonce_bytes) {
-            Ok(nonce) => nonce,
-            Err(e) => {
-                frame.release();
-                return Err(e);
-            }
-        };
+        let fleet_nonce = FleetNonce::try_from_bytes(nonce_bytes)?;
 
         // TODO(AJM): PRX should probably do some kind of nonce validation. For now,
         // just update the tracking variables
@@ -204,14 +199,13 @@ where
             buf: payload,
         };
 
-        match self.crypt.decrypt_in_place(&ga_nonce, b"", &mut buf) {
-            Ok(_) => {}
-            Err(e) => {
-                frame.release();
-                return Err(e.into());
-            }
-        };
+        self.crypt.decrypt_in_place(&ga_nonce, b"", &mut buf)?;
 
+        Ok(frame)
+    }
+
+    pub fn receive_with(&mut self) -> Result<GrantWrap<IncomingLen>, Error> {
+        let frame = self.just_gimme_frame()?;
         Ok(GrantWrap { fgr: frame })
     }
 }
