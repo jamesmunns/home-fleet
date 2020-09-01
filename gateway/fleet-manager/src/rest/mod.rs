@@ -1,9 +1,9 @@
-use std::thread::{JoinHandle, spawn};
-use crate::Result;
-use mvdb::Mvdb;
-use fleet_icd::radio::{RelayState, RelayIdx};
 use crate::plant::Plant;
+use crate::Result;
+use fleet_icd::radio::{RelayIdx, RelayState};
+use mvdb::Mvdb;
 use rocket::State;
+use std::thread::{spawn, JoinHandle};
 
 #[get("/")]
 fn index() -> &'static str {
@@ -11,7 +11,13 @@ fn index() -> &'static str {
 }
 
 #[post("/plant/<shelf>/force/<relay>/<setting>/<time_sec>")]
-fn plant_override(shelf: usize, relay: usize, setting: String, time_sec: u64, plant: State<Plant>) -> String {
+fn plant_override(
+    shelf: usize,
+    relay: usize,
+    setting: String,
+    time_sec: u64,
+    plant: State<Plant>,
+) -> String {
     if shelf != 0 {
         return format!("shelf {} is not a good shelf", shelf);
     }
@@ -23,18 +29,11 @@ fn plant_override(shelf: usize, relay: usize, setting: String, time_sec: u64, pl
     };
 
     match plant.force(relay, stg, time_sec) {
-        Ok(_) => {
-            format!(
-                "shelf: {}, relay: {}, forced {} for {} sec",
-                shelf,
-                relay,
-                setting,
-                time_sec,
-            )
-        }
-        Err(e) => {
-            format!("error: {:?}", e)
-        }
+        Ok(_) => format!(
+            "shelf: {}, relay: {}, forced {} for {} sec",
+            shelf, relay, setting, time_sec,
+        ),
+        Err(e) => format!("error: {:?}", e),
     }
 }
 
@@ -50,7 +49,7 @@ impl RestCtx {
                     .mount("/", routes![index, plant_override])
                     .manage(plant)
                     .launch();
-            })
+            }),
         }
     }
 

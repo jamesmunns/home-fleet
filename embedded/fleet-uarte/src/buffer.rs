@@ -2,9 +2,9 @@ use crate::Error;
 use bbqueue::{ArrayLength, BBBuffer};
 
 use crate::hal::pac::UARTE0;
+use crate::hal::ppi::{ConfigurablePpi, Ppi};
 use crate::hal::timer::Instance as TimerInstance;
 use crate::hal::uarte::{Baudrate, Parity, Pins};
-use crate::hal::ppi::{Ppi, ConfigurablePpi};
 use crate::{
     app::UarteApp,
     irq::{UarteIrq, UarteTimer},

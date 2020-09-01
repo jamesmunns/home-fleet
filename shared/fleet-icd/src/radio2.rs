@@ -1,4 +1,4 @@
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 use anachro_client::pubsub_table;
 
@@ -20,11 +20,7 @@ pub fn matches(subscr: &str, publ: &str) -> bool {
     }
 }
 
-use crate::radio::{
-    RelayIdx,
-    RelayState,
-    ShelfStatus,
-};
+use crate::radio::{RelayIdx, RelayState, ShelfStatus};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct RelayCommand {

@@ -9,12 +9,12 @@ use {
     cortex_m::{asm::bkpt, peripheral::SCB},
     cortex_m_rt::exception,
     esb::{
-        consts::*, irq::StatePRX, Addresses, BBBuffer, ConfigBuilder, ConstBBBuffer, Error, EsbBuffer,
-        EsbIrq, IrqTimer, TxPower, EsbApp, EsbHeader,
+        consts::*, irq::StatePRX, Addresses, BBBuffer, ConfigBuilder, ConstBBBuffer, Error, EsbApp,
+        EsbBuffer, EsbHeader, EsbIrq, IrqTimer, TxPower,
     },
     hal::{
         clocks::LfOscConfiguration,
-        gpio::{Pin, Level, Output, PushPull},
+        gpio::{Level, Output, Pin, PushPull},
         pac::{RTC0, TIMER0, TIMER2},
         ppi::{Parts, Ppi0},
         rtc::{Rtc, RtcInterrupt, Started},
@@ -23,30 +23,21 @@ use {
     rtt_target::{rprintln, rtt_init_print},
 };
 
-use fleet_esb::{prx::FleetRadioPrx, RxMessage, BorrowRxMessage};
-use fleet_icd::{
-    Buffer as CobsBuffer, WithResult,
-};
-use anachro_icd::{
-    component::Component,
-    arbitrator::Arbitrator,
-    Uuid,
-};
-use anachro_server::{
-    Request,
-    Response,
-};
+use anachro_icd::{arbitrator::Arbitrator, component::Component, Uuid};
+use anachro_server::{Request, Response};
+use fleet_esb::{prx::FleetRadioPrx, BorrowRxMessage, RxMessage};
+use fleet_icd::{Buffer as CobsBuffer, WithResult};
 use fleet_keys::keys::KEY;
 
 use fleet_uarte;
 
-use postcard::{to_slice_cobs, from_bytes, to_slice};
+use postcard::{from_bytes, to_slice, to_slice_cobs};
 
 mod timer;
 
 use timer::RollingRtcTimer;
 
-use blinq::{Blinq, consts, patterns};
+use blinq::{consts, patterns, Blinq};
 
 // Panic provider crate
 use panic_persist;
@@ -98,7 +89,8 @@ const APP: () = {
             [0xE7, 0xC2, 0xC3, 0xC4], // default
             [0xC5, 0xC6, 0xC7, 0xC8], // default
             8,                        // default: 2
-        ).unwrap();
+        )
+        .unwrap();
 
         let config = ConfigBuilder::default()
             .tx_power(TxPower::POS4DBM)
@@ -213,22 +205,10 @@ const APP: () = {
         // D11: Led::new(pins.p0_22.degrade()),
         // D10: Led::new(pins.p0_31.degrade()),
 
-        let mut blinq0  = Blinq::new(
-            p0.p0_30.into_push_pull_output(Level::High).degrade(),
-            true
-        );
-        let mut blinq1  = Blinq::new(
-            p0.p0_14.into_push_pull_output(Level::High).degrade(),
-            true
-        );
-        let mut blinq2 = Blinq::new(
-            p0.p0_22.into_push_pull_output(Level::High).degrade(),
-            true
-        );
-        let mut blinq3 = Blinq::new(
-            p0.p0_31.into_push_pull_output(Level::High).degrade(),
-            true
-        );
+        let mut blinq0 = Blinq::new(p0.p0_30.into_push_pull_output(Level::High).degrade(), true);
+        let mut blinq1 = Blinq::new(p0.p0_14.into_push_pull_output(Level::High).degrade(), true);
+        let mut blinq2 = Blinq::new(p0.p0_22.into_push_pull_output(Level::High).degrade(), true);
+        let mut blinq3 = Blinq::new(p0.p0_31.into_push_pull_output(Level::High).degrade(), true);
 
         // Insert 3s of all white short blink on reset
         for _ in 0..3 {
@@ -239,7 +219,6 @@ const APP: () = {
         }
 
         ctx.spawn.led_periodic().ok();
-
 
         init::LateResources {
             esb_app,
@@ -273,17 +252,13 @@ const APP: () = {
         let mut broker = anachro_server::Broker::default();
 
         let uarte_uuid = Uuid::from_bytes([
-            0x01, 0x02, 0x03, 0x04,
-            0x01, 0x02, 0x03, 0x04,
-            0x01, 0x02, 0x03, 0x04,
-            0x01, 0x02, 0x03, 0x04,
+            0x01, 0x02, 0x03, 0x04, 0x01, 0x02, 0x03, 0x04, 0x01, 0x02, 0x03, 0x04, 0x01, 0x02,
+            0x03, 0x04,
         ]);
 
         let pipe0_uuid = Uuid::from_bytes([
-            0x04, 0x04, 0x04, 0x04,
-            0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00,
+            0x04, 0x04, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00,
         ]);
 
         rprintln!("Start!");
@@ -301,7 +276,7 @@ const APP: () = {
                         i => {
                             rprintln!("pipe {}?", i);
                             return;
-                        },
+                        }
                     };
 
                     // Decoded a wireless message - pet the dog
@@ -378,7 +353,7 @@ const APP: () = {
                                 b.enqueue(patterns::blinks::MEDIUM_ON_OFF);
                             });
                             break;
-                        },
+                        }
 
                         // Buffer was filled. Contains remaining section of input, if any
                         WithResult::OverFull(new_buf) => {
@@ -428,8 +403,9 @@ const APP: () = {
         ctx.resources.blinq2.step();
         ctx.resources.blinq3.step();
 
-
-        ctx.schedule.led_periodic(ctx.scheduled + (timer::SIGNED_TICKS_PER_SECOND / 4)).ok();
+        ctx.schedule
+            .led_periodic(ctx.scheduled + (timer::SIGNED_TICKS_PER_SECOND / 4))
+            .ok();
     }
 
     #[task(binds = RADIO, resources = [esb_irq], priority = 3)]
@@ -487,7 +463,10 @@ unsafe fn DefaultHandler(_irqn: i16) -> ! {
     SCB::sys_reset()
 }
 
-fn try_send(uarte: &mut fleet_uarte::app::UarteApp<U1024, U1024>, msg: &Arbitrator) -> Result<(), ()> {
+fn try_send(
+    uarte: &mut fleet_uarte::app::UarteApp<U1024, U1024>,
+    msg: &Arbitrator,
+) -> Result<(), ()> {
     match uarte.write_grant(128) {
         Ok(mut wgr) => {
             let used: usize = to_slice_cobs(&msg, &mut wgr)

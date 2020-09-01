@@ -1,5 +1,5 @@
 use core::convert::TryFrom;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
 pub enum HostToDevice {
@@ -32,14 +32,8 @@ pub enum PlantLightDeviceMessage {
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
 pub enum PlantLightHostMessage {
-    SetRelay {
-        relay: RelayIdx,
-        state: RelayState,
-    },
-    SetCounters {
-        on_lifetime: u32,
-        off_lifetime: u32,
-    }
+    SetRelay { relay: RelayIdx, state: RelayState },
+    SetCounters { on_lifetime: u32, off_lifetime: u32 },
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone, Copy)]
@@ -85,15 +79,14 @@ impl TryFrom<usize> for RelayIdx {
             1 => Ok(RelayIdx::Relay1),
             2 => Ok(RelayIdx::Relay2),
             3 => Ok(RelayIdx::Relay3),
-            _ => Err(())
+            _ => Err(()),
         }
     }
 }
 
-
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
 pub struct ShelfStatus {
-    pub relays: [RelayStatus; 4]
+    pub relays: [RelayStatus; 4],
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
@@ -101,5 +94,3 @@ pub struct RelayStatus {
     pub enabled: RelayState,
     pub seconds_in_state: u32,
 }
-
-

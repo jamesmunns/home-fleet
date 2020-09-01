@@ -1,17 +1,18 @@
 #![feature(proc_macro_hygiene, decl_macro)]
 
-use serde::{Serialize, Deserialize};
+use fleet_icd::radio::{DeviceToHost, HostToDevice};
 use mvdb::Mvdb;
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use std::sync::mpsc::{Sender, Receiver, channel};
-use fleet_icd::radio::{HostToDevice, DeviceToHost};
-use std::thread::{spawn, sleep};
+use std::sync::mpsc::{channel, Receiver, Sender};
+use std::thread::{sleep, spawn};
 use std::time::Duration;
 
-#[macro_use] extern crate rocket;
+#[macro_use]
+extern crate rocket;
 
-mod plant;
 mod comms;
+mod plant;
 mod rest;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -36,10 +37,6 @@ fn main() -> Result<()> {
 
     let plants = main_cfg.access(|t| t.plants.clone())?;
     let uart = main_cfg.access(|t| t.uart.clone())?;
-
-
-
-
 
     let (plant_app, plant_mdm) = comms(plants[0].pipe);
 
@@ -78,8 +75,16 @@ fn comms(pipe: u8) -> (AppCommsHandle, ModemCommsHandle) {
     let (in_tx, in_rx) = channel();
 
     (
-        AppCommsHandle { tx: out_tx, rx: in_rx, pipe },
-        ModemCommsHandle { tx: in_tx, rx: out_rx, pipe },
+        AppCommsHandle {
+            tx: out_tx,
+            rx: in_rx,
+            pipe,
+        },
+        ModemCommsHandle {
+            tx: in_tx,
+            rx: out_rx,
+            pipe,
+        },
     )
 }
 

@@ -4,11 +4,11 @@ pub mod modem;
 pub mod radio;
 pub mod radio2;
 
-pub use generic_array::{ArrayLength, GenericArray};
-pub use generic_array::typenum::consts;
-use serde::de::{DeserializeOwned, Deserialize};
-use postcard;
 use core::mem::MaybeUninit;
+pub use generic_array::typenum::consts;
+pub use generic_array::{ArrayLength, GenericArray};
+use postcard;
+use serde::de::{Deserialize, DeserializeOwned};
 
 #[derive(Default)]
 pub struct Buffer<N: ArrayLength<u8>> {
@@ -29,13 +29,8 @@ pub enum FeedResult<'a, T> {
 
     /// Deserialization complete. Contains deserialized data and
     /// remaining section of input, if any
-    Success {
-        data: T,
-        remaining: &'a [u8],
-    }
-
+    Success { data: T, remaining: &'a [u8] },
 }
-
 
 pub enum WithResult<'a, R> {
     /// Consumed all data, still pending
@@ -50,29 +45,29 @@ pub enum WithResult<'a, R> {
 
     /// Deserialization complete. Contains deserialized data and
     /// remaining section of input, if any
-    SuccessWith {
-        result: R,
-        remaining: &'a [u8],
-    }
-
+    SuccessWith { result: R, remaining: &'a [u8] },
 }
 
 impl<N> Buffer<N>
 where
-    N: ArrayLength<u8>
+    N: ArrayLength<u8>,
 {
     pub fn new() -> Self {
         Buffer {
             buf: unsafe { MaybeUninit::zeroed().assume_init() },
-            idx: 0
+            idx: 0,
         }
     }
 
-    pub fn feed_with<'a: 'me, 'de, 'me: 'de, T, F, R>(&'me mut self, input: &'a [u8], fun: F) -> WithResult<'a, R>
+    pub fn feed_with<'a: 'me, 'de, 'me: 'de, T, F, R>(
+        &'me mut self,
+        input: &'a [u8],
+        fun: F,
+    ) -> WithResult<'a, R>
     where
         T: 'de + Deserialize<'de>,
         F: FnOnce(T) -> R,
-        R: 'static
+        R: 'static,
     {
         if input.is_empty() {
             return WithResult::Consumed;
@@ -92,13 +87,11 @@ where
                 self.extend_unchecked(take);
 
                 let retval = match postcard::from_bytes_cobs::<T>(&mut self.buf[..self.idx]) {
-                    Ok(t) =>  {
-                        WithResult::SuccessWith {
-                            remaining: release,
-                            result: fun(t)
-                        }
+                    Ok(t) => WithResult::SuccessWith {
+                        remaining: release,
+                        result: fun(t),
                     },
-                    Err(_) => WithResult::DeserError(release)
+                    Err(_) => WithResult::DeserError(release),
                 };
                 self.idx = 0;
                 retval
@@ -140,8 +133,11 @@ where
                 self.extend_unchecked(take);
 
                 let retval = match postcard::from_bytes_cobs::<T>(&mut self.buf[..self.idx]) {
-                    Ok(t) =>  FeedResult::Success { data: t, remaining: release },
-                    Err(_) => FeedResult::DeserError(release)
+                    Ok(t) => FeedResult::Success {
+                        data: t,
+                        remaining: release,
+                    },
+                    Err(_) => FeedResult::DeserError(release),
                 };
                 self.idx = 0;
                 retval
@@ -162,7 +158,6 @@ where
                 FeedResult::Consumed
             }
         }
-
     }
 
     /// extend the internal buffer with the given input. Will panic
@@ -176,7 +171,7 @@ where
 
 #[test]
 fn loop_test() {
-    use serde::{Serialize, Deserialize};
+    use serde::{Deserialize, Serialize};
 
     #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
     struct Demo {
@@ -189,7 +184,7 @@ fn loop_test() {
 
     let ser = postcard::to_slice_cobs(&Demo { a: 10, b: 20 }, &mut raw_buf).unwrap();
 
-    if let FeedResult::Success{ data, remaining } = cobs_buf.feed(ser) {
+    if let FeedResult::Success { data, remaining } = cobs_buf.feed(ser) {
         assert_eq!(Demo { a: 10, b: 20 }, data);
         assert_eq!(remaining.len(), 0);
     } else {

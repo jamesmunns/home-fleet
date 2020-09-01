@@ -120,14 +120,19 @@ const APP: () = {
             )
             .unwrap();
 
-// 22:54:28.240 CH0 EEP: 40002108
-// 22:54:28.240 CH0 TEP: 4000A00C
-// 22:54:28.240 CHEN: 00000001
+        // 22:54:28.240 CH0 EEP: 40002108
+        // 22:54:28.240 CH0 TEP: 4000A00C
+        // 22:54:28.240 CHEN: 00000001
 
-        rprintln!("CH0 EEP: {:08X}", unsafe { core::ptr::read_volatile(0x4001F510 as *const u32) });
-        rprintln!("CH0 TEP: {:08X}", unsafe { core::ptr::read_volatile(0x4001F514 as *const u32) });
-        rprintln!("CHEN: {:08X}", unsafe { core::ptr::read_volatile(0x4001F500 as *const u32) });
-
+        rprintln!("CH0 EEP: {:08X}", unsafe {
+            core::ptr::read_volatile(0x4001F510 as *const u32)
+        });
+        rprintln!("CH0 TEP: {:08X}", unsafe {
+            core::ptr::read_volatile(0x4001F514 as *const u32)
+        });
+        rprintln!("CHEN: {:08X}", unsafe {
+            core::ptr::read_volatile(0x4001F500 as *const u32)
+        });
 
         // ctx.device.PPI.chenset.modify(|_r, w| w.ch0().set_bit());
 

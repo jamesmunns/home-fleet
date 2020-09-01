@@ -113,7 +113,8 @@ const APP: () = {
             [0xE7, 0xC2, 0xC3, 0xC4], // default
             [0xC5, 0xC6, 0xC7, 0xC8], // default
             8,                        // default: 2
-        ).unwrap();
+        )
+        .unwrap();
         let config = ConfigBuilder::default()
             .wait_for_ack_timeout(1500)
             .retransmit_delay(2000)
@@ -309,10 +310,7 @@ const APP: () = {
 
     #[task(resources = [esb_app, client], capacity = 5)]
     fn publish(ctx: publish::Context, msg: PlantLightTable) {
-        comms::publish(
-            ctx,
-            &msg
-        );
+        comms::publish(ctx, &msg);
     }
 
     /// This software event fires periodically, sending the current status

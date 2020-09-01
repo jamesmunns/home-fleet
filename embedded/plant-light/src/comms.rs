@@ -1,4 +1,4 @@
-use anachro_client::{Client, ClientIo, ClientError, RecvMsg};
+use anachro_client::{Client, ClientError, ClientIo, RecvMsg};
 use anachro_icd::{arbitrator::Arbitrator, component::Component, ManagedString, PubSubPath};
 use fleet_esb::{BorrowRxMessage, RollingTimer};
 use {
@@ -8,14 +8,14 @@ use {
     fleet_esb::{ptx::FleetRadioPtx, RxMessage},
     fleet_icd::radio::{DeviceToHost, GeneralDeviceMessage, HostToDevice},
     fleet_icd::radio2::PlantLightTable,
-    rtt_target::rprintln,
     postcard::to_slice,
+    rtt_target::rprintln,
 };
 
-use heapless::{ArrayLength, Vec, consts};
+use heapless::{consts, ArrayLength, Vec};
 
-use fleet_esb::ptx::PayloadR;
 use anachro_client::from_bytes;
+use fleet_esb::ptx::PayloadR;
 
 struct IoHandler<'a> {
     esb_app: &'a mut FleetRadioPtx<U2048, U2048, RollingRtcTimer>,
@@ -33,20 +33,20 @@ impl<'a> ClientIo for IoHandler<'a> {
                     if let Ok(msg) = from_bytes::<Arbitrator>(msg) {
                         return Ok(Some(msg));
                     } else {
-                        return Ok(None)
+                        return Ok(None);
                     }
                 } else {
                     // What?
-                    return Ok(None)
+                    return Ok(None);
                 }
             }
-            Err(_) => {
-                return Ok(None)
-            }
+            Err(_) => return Ok(None),
         }
     }
     fn send(&mut self, msg: &Component) -> Result<(), ClientError> {
-        self.esb_app.send(msg, 0).map_err(|_| ClientError::OutputFull)
+        self.esb_app
+            .send(msg, 0)
+            .map_err(|_| ClientError::OutputFull)
     }
 }
 
@@ -56,17 +56,11 @@ impl<'a> IoHandler<'a> {
     }
 }
 
-pub fn publish(
-    ctx: crate::publish::Context,
-    msg: &PlantLightTable
-) {
+pub fn publish(ctx: crate::publish::Context, msg: &PlantLightTable) {
     let esb_app = ctx.resources.esb_app;
     let client = ctx.resources.client;
 
-    let mut io = IoHandler {
-        esb_app,
-        rgr: None,
-    };
+    let mut io = IoHandler { esb_app, rgr: None };
 
     let mut buf = [0u8; 128];
 
@@ -76,17 +70,9 @@ pub fn publish(
         Err(_) => return,
     };
 
-    match client.publish(
-        &mut io,
-        pubby.path,
-        pubby.buf,
-    ) {
-        Ok(_) => {
-            rprintln!("Sent Pub!")
-        },
-        Err(_) => {
-            rprintln!("Pub Send Error!")
-        },
+    match client.publish(&mut io, pubby.path, pubby.buf) {
+        Ok(_) => rprintln!("Sent Pub!"),
+        Err(_) => rprintln!("Pub Send Error!"),
     }
 }
 
@@ -99,23 +85,23 @@ pub fn rx_periodic(ctx: crate::rx_periodic::Context) {
     let esb_app = ctx.resources.esb_app;
     let client = ctx.resources.client;
 
-    let mut io = IoHandler {
-        esb_app,
-        rgr: None,
-    };
+    let mut io = IoHandler { esb_app, rgr: None };
 
     match client.process_one::<_, PlantLightTable>(&mut io) {
-        Ok(Some(RecvMsg { payload: PlantLightTable::Relay(cmd), .. })) => {
+        Ok(Some(RecvMsg {
+            payload: PlantLightTable::Relay(cmd),
+            ..
+        })) => {
             rprintln!("Set relay!");
             ctx.spawn.relay_command(cmd).ok();
         }
         Ok(Some(msg)) => {
             rprintln!("GOT {:?}", msg);
-        },
-        Ok(None) => {},
+        }
+        Ok(None) => {}
         Err(e) => {
             rprintln!("ERR: {:?}", e);
-        },
+        }
     }
 
     io.drop_grant();
@@ -129,4 +115,3 @@ pub fn rx_periodic(ctx: crate::rx_periodic::Context) {
 
     ctx.schedule.rx_periodic(ctx.scheduled + INTERVAL).ok();
 }
-

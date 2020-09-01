@@ -1,12 +1,10 @@
 use crate::hal::{
     gpio::Port,
     pac::{Interrupt, NVIC, UARTE0},
-    ppi::{Ppi, ConfigurablePpi},
-    timer::Instance as TimerInstance,
-    uarte:: {
-        Instance as UarteInstance, Baudrate, Parity, Pins,
-    },
+    ppi::{ConfigurablePpi, Ppi},
     target_constants::EASY_DMA_SIZE,
+    timer::Instance as TimerInstance,
+    uarte::{Baudrate, Instance as UarteInstance, Parity, Pins},
 };
 use bbqueue::{ArrayLength, Consumer, GrantR, GrantW, Producer};
 use core::sync::atomic::{compiler_fence, AtomicBool, Ordering::SeqCst};
@@ -141,7 +139,6 @@ where
                 self.tx_grant = Some(gr);
             }
         }
-
 
         // Clear events we processed
         if endrx {

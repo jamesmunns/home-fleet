@@ -1,14 +1,15 @@
+use crate::{ModemCommsHandle, Result};
+use fleet_icd::{
+    consts::*,
+    modem::{ModemToPc, PcToModem},
+    Buffer, FeedResult,
+};
 use serialport::prelude::*;
 use std::{
     collections::HashMap,
     io::{self, prelude::*},
     time::Duration,
 };
-use fleet_icd::{
-    consts::*, Buffer, FeedResult,
-    modem::{PcToModem, ModemToPc},
-};
-use crate::{ModemCommsHandle, Result};
 
 pub struct CommsCtx {
     port: Box<dyn SerialPort>,
@@ -58,19 +59,18 @@ impl CommsCtx {
                         Success { data, remaining } => {
                             match data {
                                 ModemToPc::Incoming { pipe, msg } => {
-                                    let comms = self.map.get_mut(&pipe).ok_or(String::from("oh."))?;
+                                    let comms =
+                                        self.map.get_mut(&pipe).ok_or(String::from("oh."))?;
                                     comms.tx.send(msg)?;
                                 }
-                                ModemToPc::Pong => {},
+                                ModemToPc::Pong => {}
                             }
                             remaining
                         }
                     };
                 }
             }
-            Err(ref e) if e.kind() == std::io::ErrorKind::TimedOut => {
-
-            }
+            Err(ref e) if e.kind() == std::io::ErrorKind::TimedOut => {}
             Err(e) => {
                 eprintln!("{:?}", e);
                 return Err(String::from("BAD SERIAL ERROR").into());
@@ -79,10 +79,7 @@ impl CommsCtx {
 
         for (pipe, comms) in self.map.iter_mut() {
             while let Ok(msg) = comms.rx.try_recv() {
-                let msg = PcToModem::Outgoing {
-                    msg,
-                    pipe: *pipe,
-                };
+                let msg = PcToModem::Outgoing { msg, pipe: *pipe };
                 if let Ok(slice) = postcard::to_slice_cobs(&msg, &mut raw_buf) {
                     println!("Sending {:?}", &msg);
                     self.port.write_all(slice).map_err(drop).ok();
@@ -92,7 +89,5 @@ impl CommsCtx {
         }
 
         Ok(())
-
     }
 }
-
