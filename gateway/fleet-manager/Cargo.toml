@@ -8,12 +8,18 @@ edition = "2018"
 
 [dependencies]
 mvdb = "0.3.0"
-postcard = "0.5.0"
+postcard = { version = "0.5.0", features = ["use-std"] }
 chrono = { version = "0.4.11", features = ["serde"] }
 serialport = "3.3.0"
 serde = { version = "1.0.114", features = ["derive"] }
 topq = { version = "0.2.0" }
 rocket = "0.4.5"
+
+[dependencies.anachro-client]
+path = "/home/james/anachro/anachro-client"
+
+[dependencies.anachro-icd]
+path = "/home/james/anachro/anachro-icd"
 
 [dependencies.fleet-icd]
 path = "../../shared/fleet-icd"

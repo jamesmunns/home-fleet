@@ -1,12 +1,12 @@
-use crate::{AppCommsHandle, Result};
+use crate::{Result, Channels, HomeFleetTable};
 use chrono::{
     naive::{NaiveDate, NaiveTime},
     Local,
 };
 use fleet_icd::radio::{
-    DeviceToHost, HostToDevice, PlantLightDeviceMessage, PlantLightHostMessage,
-    RelayState as RadioRelayState,
+    RelayState as RadioRelayState, ShelfStatus
 };
+use fleet_icd::radio2::RelayCommand;
 use mvdb::Mvdb;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -73,7 +73,7 @@ impl Timer for InstantTimer {
 type RelayState = Topq<bool, RelayPriority, InstantTimer, U4>;
 
 pub struct InnerState {
-    comms: AppCommsHandle,
+    comms: Channels,
     last_rx: Option<Instant>,
     last_tx: Option<Instant>,
     state: [RelayState; 4],
@@ -87,7 +87,7 @@ pub struct Plant {
 }
 
 impl Plant {
-    pub fn new(opts: &Path, stats: &Path, comms: AppCommsHandle) -> Result<Self> {
+    pub fn new(opts: &Path, stats: &Path, comms: Channels) -> Result<Self> {
         let timer = InstantTimer::default();
 
         Ok(Self {
@@ -142,14 +142,13 @@ impl Plant {
 
             if should_tx {
                 state.last_tx = Some(Instant::now());
-
                 for (idx, rstate) in result.drain(..).enumerate() {
-                    state.comms.tx.send(HostToDevice::PlantLight(
-                        PlantLightHostMessage::SetRelay {
+                    state.comms.tx.send(
+                        HomeFleetTable::Relay(RelayCommand {
                             relay: idx.try_into().map_err(|_| String::from("whoops"))?,
                             state: rstate.into(),
-                        },
-                    ))?;
+                        })
+                    )?;
                 }
             }
 
@@ -157,20 +156,16 @@ impl Plant {
             while let Ok(msg) = state.comms.rx.try_recv() {
                 has_rx = true;
                 match msg {
-                    DeviceToHost::PlantLight(pl) => {
-                        match pl {
-                            PlantLightDeviceMessage::Status(pstat) => {
-                                for (idx, relay) in pstat.relays.iter().enumerate() {
-                                    if relay.enabled == RadioRelayState::On {
-                                        // TODO: Update state
-                                        println!("relay {} is on", idx);
-                                    }
-                                }
+                    HomeFleetTable::Status(ShelfStatus { relays }) => {
+                        for (idx, relay) in relays.iter().enumerate() {
+                            if relay.enabled == RadioRelayState::On {
+                                // TODO: Update state
+                                println!("relay {} is on", idx);
                             }
                         }
                     }
-                    DeviceToHost::General(gen) => {
-                        println!("general: {:?}", gen);
+                    other => {
+                        println!("other: {:?}", other);
                     }
                 }
             }

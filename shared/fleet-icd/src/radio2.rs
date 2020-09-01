@@ -22,7 +22,7 @@ pub fn matches(subscr: &str, publ: &str) -> bool {
 
 use crate::radio::{RelayIdx, RelayState, ShelfStatus};
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct RelayCommand {
     pub relay: RelayIdx,
     pub state: RelayState,

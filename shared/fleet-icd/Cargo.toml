@@ -7,7 +7,9 @@ edition = "2018"
 [dependencies]
 generic-array = "0.14.2"
 postcard = "0.5.0"
-anachro-icd = "0.1"
+
+[dependencies.anachro-icd]
+path = "/home/james/anachro/anachro-icd"
 
 [dependencies.anachro-client]
 # git = "https://github.com/jamesmunns/anachro"
