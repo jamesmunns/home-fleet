@@ -3,6 +3,7 @@ name = "test-modem"
 version = "0.0.1"
 edition = "2018"
 authors = [ "James Munns <james.munns@ferrous-systems.com>"]
+license = "MIT OR Apache-2.0"
 
 [dependencies]
 cortex-m = "0.6.2"
